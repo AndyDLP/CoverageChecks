@@ -68,7 +68,7 @@ Describe 'Test-IsDc' {
         }
         Test-IsDc -ComputerName 'TestDC1' | Out-Null
         It 'Should failback to trying via Get-WmiObject' {
-            Assert-MockCalled -CommandName 'Get-WmiObject' -ParameterFilter { $ComputerName -eq 'TestDC1' } -Exactly -Times 1
+            Assert-MockCalled -CommandName 'Get-WmiObject' -ModuleName ECI-Utilities -ParameterFilter { $ComputerName -eq 'TestDC1' } -Exactly -Times 1
         }
     }
 }
