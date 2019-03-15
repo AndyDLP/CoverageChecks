@@ -6,10 +6,10 @@ Describe 'Test-IsDc' {
         }
     }
     Context 'When the remote computer is a backup DC' {
-        Mock Invoke-Command {return $true}
-        Mock Test-Connection {return $true}
-        Mock Test-WSMan {return $true}
-        Mock Get-WmiObject {
+        Mock -ModuleName ECI-Utilities Invoke-Command {return $true}
+        Mock -ModuleName ECI-Utilities Test-Connection {return $true}
+        Mock -ModuleName ECI-Utilities Test-WSMan {return $true}
+        Mock -ModuleName ECI-Utilities Get-WmiObject {
             return [PSCustomObject]@{
                 DomainRole = 4
             }
@@ -19,10 +19,10 @@ Describe 'Test-IsDc' {
         }
     }
     Context 'When the remote computer is a primary DC' {
-        Mock Invoke-Command {return $true}
-        Mock Test-Connection {return $true}
-        Mock Test-WSMan {return $true}
-        Mock Get-WmiObject {
+        Mock -ModuleName ECI-Utilities Invoke-Command {return $true}
+        Mock -ModuleName ECI-Utilities Test-Connection {return $true}
+        Mock -ModuleName ECI-Utilities Test-WSMan {return $true}
+        Mock -ModuleName ECI-Utilities Get-WmiObject {
             return [PSCustomObject]@{
                 DomainRole = 5
             }
@@ -32,10 +32,10 @@ Describe 'Test-IsDc' {
         }
     }
     Context 'When the remote computer is not a DC' {
-        Mock Invoke-Command {return $true}
-        Mock Test-Connection {return $true}
-        Mock Test-WSMan {return $true}
-        Mock Get-WmiObject {
+        Mock -ModuleName ECI-Utilities Invoke-Command {return $true}
+        Mock -ModuleName ECI-Utilities Test-Connection {return $true}
+        Mock -ModuleName ECI-Utilities Test-WSMan {return $true}
+        Mock -ModuleName ECI-Utilities Get-WmiObject {
             return [PSCustomObject]@{
                 DomainRole = 3
             }
@@ -45,10 +45,10 @@ Describe 'Test-IsDc' {
         }
     }
     Context 'When the remote computer is not pingable' {
-        Mock Invoke-Command {return $true}
-        Mock Test-Connection {return $false}
-        Mock Test-WSMan {return $true}
-        Mock Get-WmiObject {
+        Mock -ModuleName ECI-Utilities Invoke-Command {return $true}
+        Mock -ModuleName ECI-Utilities Test-Connection {return $false}
+        Mock -ModuleName ECI-Utilities Test-WSMan {return $true}
+        Mock -ModuleName ECI-Utilities Get-WmiObject {
             return [PSCustomObject]@{
                 DomainRole = 3
             }
@@ -58,10 +58,10 @@ Describe 'Test-IsDc' {
         }
     }
     Context 'When WSMan is not available on the remote computer' {
-        Mock Invoke-Command {return $true}
-        Mock Test-Connection {return $true}
-        Mock Test-WSMan { throw "error" }
-        Mock Get-WmiObject {
+        Mock -ModuleName ECI-Utilities Invoke-Command {return $true}
+        Mock -ModuleName ECI-Utilities Test-Connection {return $true}
+        Mock -ModuleName ECI-Utilities Test-WSMan { throw "error" }
+        Mock -ModuleName ECI-Utilities Get-WmiObject {
             return [PSCustomObject]@{
                 DomainRole = 3
             }
