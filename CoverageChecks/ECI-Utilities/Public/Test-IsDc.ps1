@@ -15,7 +15,7 @@ function Test-IsDC {
     .OUTPUTS
         System.Boolean
 #>
-    [CmdletBinding(PositionalBinding = $true)]
+    [CmdletBinding()]
     [OutputType([bool])]
     param
     (
