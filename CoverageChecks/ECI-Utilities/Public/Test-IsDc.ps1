@@ -24,6 +24,7 @@ function Test-IsDC {
                    ValueFromPipeline = $true,
                    ValueFromPipelineByPropertyName = $true,
                    HelpMessage = 'The computername to check')]
+        [ValidateNotNullOrEmpty()]
         [string[]]$ComputerName = $env:COMPUTERNAME,
 
         [Parameter(Mandatory = $false,
