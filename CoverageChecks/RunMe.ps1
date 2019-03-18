@@ -102,15 +102,45 @@ If ($RunningUserGroups -Contains "Domain Admins") {
 ########################################################
 # GET AD INFORMATION
 
+# !Assumption is thje environment is one forest with one root domain only!
+
 $ThisForest = Get-ADForest
-Write-Verbose "Current forest is: $($ThisForest.Name)"
 
-$ThisDomain = Get-ADDomain
-Write-Verbose "Current domain is: $($ThisDomain.Name)"
+$AllDomainInfo = @()
+foreach ($Domain in $ThisForest.Domains) {
+    $ThisDomain = Get-ADDomain -Identity $Domain
+    $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
+    $AllDomainControllersAD = Get-ADObject -Server $ThisDomain.PDCEmulator -Filter {ObjectClass -eq 'computer'} -SearchBase "OU=Domain Controllers,$($ThisDomain.DistinguishedName)"
+    $DCRefObj = $AllDomainControllersPS | Select-Object -ExpandProperty ComputerObjectDN
+    $DCDiffObj = $AllDomainControllersAD | Select-Object -ExpandProperty DistinguishedName
+    $Differences = Compare-Object -ReferenceObject $DCRefObj -DifferenceObject $DCDiffObj
+    if ($null -ne $Differences) {
+        # Domain controller issues!
+        # investigate!
+    } else {
+        # All good / do nothing
+    }
+    
+    $ADInfo = [PSCustomObject]@{
+        ForestName = $ThisForest.Name
+        DomainDNSRoot = $ThisDomain.DNSRoot
+        DomainName = $ThisDomain.NetBIOSName
+        ForestMode = $ThisForest.ForestMode
+        DomainMode = $ThisDomain.DomainMode
+        SchemaMaster = $ThisForest.SchemaMaster
+        DomainNamingMaster = $ThisForest.DomainNamingMaster
+        PDCEmulator = $ThisDomain.PDCEmulator
+        RIDMaster = $ThisDomain.RIDMaster
+        InfrastructureMaster = $ThisDomain.InfrastructureMaster
+        GlobalCatalogs = (($ThisForest.GlobalCatalogs | Sort-Object) -join ', ')
+        Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
+    }
+}
 
-$AllDomainControllers = Get-ADDomainController -Filter *
 
 
+# END AD INFORMATION
+#########################################################
 
 #########################################################
 # BEGIN MAIN LOOP
@@ -137,7 +167,7 @@ foreach ($Server in $ServerList) {
             $WSMANRESULTS = Test-WSMan -ComputerName $Server.Name -ErrorAction Stop
             $ServerWSManrunning = $true
         }
-        catch { $ServerWSManrunning = $false }|
+        catch { $ServerWSManrunning = $false }
 
         if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
             # Server responding fine
