@@ -132,11 +132,104 @@ foreach ($Domain in $ThisForest.Domains) {
         PDCEmulator = $ThisDomain.PDCEmulator
         RIDMaster = $ThisDomain.RIDMaster
         InfrastructureMaster = $ThisDomain.InfrastructureMaster
-        GlobalCatalogs = (($ThisForest.GlobalCatalogs | Sort-Object) -join ', ')
         Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
     }
-}
+} # foreach domain
 
+
+# DC INFO
+
+# Lists
+$AllDCInfo = @()
+$FailedDCInfo = @()
+$IgnoredDC
+
+# incremental counter
+$inc = 1
+
+foreach ($DC in $AllDomainControllersPS) {
+    Write-Verbose "Starting checks on: $($DC.Name)"
+    Write-Verbose "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"
+    $inc++
+
+    # Find if PC is ON and responding to WinRM
+    $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
+    # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
+    try {
+        $WSMANRESULTS = Test-WSMan -ComputerName $DC.Name -ErrorAction Stop
+        $ServerWSManrunning = $true
+    }
+    catch { $ServerWSManrunning = $false }
+
+    if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
+        # Server responding fine
+        try {
+            # Invoke it all, don't rely on the inbuilt remoting of Get-WmiObject or other cmdlets
+            $OutputObjectParams = Invoke-Command -ComputerName $DC.name -HideComputerName -ScriptBlock {
+                $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
+                $PCInfo = Get-WmiObject -Class 'win32_computersystem'
+                $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
+                $ADDSDBPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'DSA Working Directory'
+                $ADDSLogPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'Database log files path'
+                $ADDSSYSVOLPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\Netlogon\Parameters | Get-ItemProperty).SYSVOL
+                $ImportantVolumes = @(($ADDSDBPath -split '\\')[0],($ADDSLogPath -split '\\')[0],($ADDSSYSVOLPath -split '\\')[0])
+
+                $OutputObjectParams = @{
+                    ComputerName = $env:COMPUTERNAME
+                    OperatingSystem = $OSInfo.Caption
+                    LastBootTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
+                    IsVirtual = if ($PCInfo.model -like "*virtual*") {$true} else {$false}
+                    IsGlobalCatalog = $args[0].IsGlobalCatalog
+                    NTDSServiceStatus = (Get-Service -Name 'NTDS').Status
+                    NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
+                    DNSServiceStatus = (Get-Service -Name 'DNS').Status
+                }
+                foreach ($Disk in $DiskInfo) {
+                    $Freespace = $Disk.FreeSpace / 1GB
+                    $TotalSize = $Disk.Size / 1GB
+                    $PercentFree = (($Freespace / $TotalSize) * 100)
+                    # Only add AD DS volumes
+                    if ($Disk.DeviceId -eq ($ADDSDBPath -split '\\')[0]) {
+                        $OutputObjectParams.Add("ADDS volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                    }
+                    if ($Disk.DeviceId -eq ($ADDSLogPath -split '\\')[0]) {
+                        $OutputObjectParams.Add("ADDS log volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                    }
+                    if ($Disk.DeviceId -eq ($ADDSSYSVOLPath -split '\\')[0]) {
+                        $OutputObjectParams.Add("SYSVOL volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                    }
+                }
+                $OutputObjectParams
+            } -ErrorAction Stop -ArgumentList $DC
+
+            $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
+            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
+            $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
+
+            $DCResponse = [PSCustomObject]$DCResponseparams
+            $AllDCInfo = $AllDCInfo + $DCResponse
+        } # try
+        catch {
+            Write-Verbose "$($DC.Name) failed"
+            $FailObject = [PSCustomObject]@{
+                ComputerName = $DC.HostName
+                DC = $DC
+                ServerResponding = $ServerResponding
+                ServerWSManrunning = $ServerWSManrunning
+            }
+            $FailedDCInfo = $FailedDCInfo + $FailObject
+        } # catch
+    } else {
+        Write-Verbose "$($DC.Name) failed"
+        $FailObject = [PSCustomObject]@{
+            ComputerName = $DC.HostName
+            DC = $DC
+            ServerResponding = $ServerResponding
+            ServerWSManrunning = $ServerWSManrunning
+        }
+        $FailedDCInfo = $FailedDCInfo + $FailObject
+    } # else server not responding fine
+} # foreach DC
 
 
 # END AD INFORMATION
