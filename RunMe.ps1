@@ -100,9 +100,116 @@ If ($RunningUserGroups -Contains "Domain Admins") {
 }
 
 ########################################################
+# Define functions
+
+function Get-DfsrBacklog {
+    <#
+        .SYNOPSIS
+            Gets DFSR backlogs
+        
+        .DESCRIPTION
+            Gets DFSR backlogs
+        
+        .PARAMETER ComputerName
+            The computer to get DFSR backlogs from
+        
+        .EXAMPLE
+            PS C:\> Get-DfsrBacklog -ComputerName DC01
+    
+            Get the backlog information from one DC
+        
+        .EXAMPLE
+            PS C:\> $DCList = ( (Get-ADDomain).ReplicaDirectoryServers + (Get-ADDomain).ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController | Select-Object -ExpandProperty Name
+            PS C:\> Get-DfsrBacklog -ComputerName $DCList | Format-Table -AutoSize
+    
+            Get backlog info from DCs in the current domain
+        
+        .NOTES
+            adelapole@eci.com
+            Updated 2019-03-20
+    
+        .LINK
+            www.eci.com
+    #>
+        
+        [CmdletBinding()]
+        param
+        (
+            [Parameter(Mandatory = $true,
+                        ValueFromPipeline = $true,
+                        ValueFromPipelineByPropertyName = $true,
+                        Position = 1,
+                        HelpMessage = 'The computername from which to check backlog')]
+            [ValidateNotNullOrEmpty()]
+            [string[]]$ComputerName
+        )
+    
+        begin {}
+    
+        process {
+            foreach ($computer in $ComputerName) {
+                Write-Verbose "Connecting to $computer"
+                $RGroups = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query "SELECT * FROM DfsrReplicationGroupConfig" -ComputerName $computer
+                foreach ($Group in $RGroups) {
+                    Write-Verbose "Replication group $($Group.ReplicationGroupName)"
+                    $RGFoldersWMIQ = "SELECT * FROM DfsrReplicatedFolderConfig WHERE ReplicationGroupGUID='" + $Group.ReplicationGroupGUID + "'"
+                    $RGFolders = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query  $RGFoldersWMIQ -ComputerName $computer
+                    $RGConnectionsWMIQ = "SELECT * FROM DfsrConnectionConfig WHERE ReplicationGroupGUID='"+ $Group.ReplicationGroupGUID + "'"
+                    $RGConnections = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query $RGConnectionsWMIQ -ComputerName $computer
+                    foreach ($Connection in $RGConnections) {
+                        $ConnectionName = $Connection.PartnerName#.Trim()
+                        if ($Connection.Enabled -eq $True) {
+                            if (Test-Connection -ComputerName $computer -Count 1 -Quiet) {
+                                foreach ($Folder in $RGFolders) {
+                                    $RGName = $Group.ReplicationGroupName
+                                    $RFName = $Folder.ReplicatedFolderName
+                                    if ($Connection.Inbound -eq $True) {
+                                        $SendingMember = $ConnectionName
+                                        $ReceivingMember = $computer
+                                    } else {
+                                        $SendingMember = $computer
+                                        $ReceivingMember = $ConnectionName
+                                    }
+                                    $BLCommand = "dfsrdiag Backlog /RGName:'" + $RGName + "' /RFName:'" + $RFName + "' /SendingMember:" + $SendingMember + " /ReceivingMember:" + $ReceivingMember
+                                    if ($computer -eq $env:ComputerName) {
+                                        $Backlog = Invoke-Expression -Command $BLCommand
+                                    } else {
+                                        $Backlog = Invoke-Command -ComputerName $computer -HideComputerName -ScriptBlock {
+                                            $Backlog = Invoke-Expression -Command $args[0]
+                                            $Backlog
+                                        } -ArgumentList $BLCommand
+                                    }
+                                    $BackLogFilecount = 0
+                                    foreach ($item in $Backlog) {
+                                        if ($item -ilike "*Backlog File count*") {
+                                            $BacklogFileCount = [int]$Item.Split(":")[1].Trim()
+                                        }
+                                    }
+                                    Write-Verbose "$BacklogFileCount files in backlog $SendingMember->$ReceivingMember for $RGName"
+                                    $outputObject = [PSCustomObject]@{
+                                        ComputerName = $computer
+                                        ReplicationGroupname = $RGName
+                                        SendingMember = $SendingMember
+                                        ReceivingMember = $ReceivingMember
+                                        BacklogFileCount = $BacklogFileCount
+                                    }
+                                    $outputObject
+                                } # Closing iterate through all folders
+                            } # Closing  If replies to ping
+                        } # Closing  If Connection enabled
+                    } # Closing iteration through all connections
+                } # Closing iteration through all groups
+            } # foreach computer
+        } # process
+    
+        end {}
+    }
+
+
+########################################################
 # GET AD INFORMATION
 
-# !Assumption is thje environment is one forest with one root domain only!
+# !Assumption is the environment is one forest with one root domain only!
 
 $ThisForest = Get-ADForest
 
@@ -134,6 +241,7 @@ foreach ($Domain in $ThisForest.Domains) {
         InfrastructureMaster = $ThisDomain.InfrastructureMaster
         Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
     }
+    $AllDomainInfo = $AllDomainInfo + $ADInfo
 } # foreach domain
 
 
@@ -156,7 +264,7 @@ foreach ($DC in $AllDomainControllersPS) {
     $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
     # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
     try {
-        $WSMANRESULTS = Test-WSMan -ComputerName $DC.Name -ErrorAction Stop
+        Test-WSMan -ComputerName $DC.Name -ErrorAction Stop | Out-Null
         $ServerWSManrunning = $true
     }
     catch { $ServerWSManrunning = $false }
@@ -164,6 +272,7 @@ foreach ($DC in $AllDomainControllersPS) {
     if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
         # Server responding fine
         try {
+            $DCPSSession = New-PSSession -ComputerName $DC.name
             # Invoke it all, don't rely on the inbuilt remoting of Get-WmiObject or other cmdlets
             $OutputObjectParams = Invoke-Command -ComputerName $DC.name -HideComputerName -ScriptBlock {
                 $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
@@ -200,6 +309,8 @@ foreach ($DC in $AllDomainControllersPS) {
                 }
                 $OutputObjectParams
             } -ErrorAction Stop -ArgumentList $DC
+
+            Invoke-Command -ScriptBlock ${function:foo} -argumentlist "Bye!"
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
@@ -256,7 +367,7 @@ foreach ($Server in $ServerList) {
         $ServerResponding = Test-Connection -Count 1 -ComputerName $Server.Name -Quiet
         # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
         try {
-            $WSMANRESULTS = Test-WSMan -ComputerName $Server.Name -ErrorAction Stop
+            Test-WSMan -ComputerName $Server.Name -ErrorAction Stop | Out-Null
             $ServerWSManrunning = $true
         }
         catch { $ServerWSManrunning = $false }
