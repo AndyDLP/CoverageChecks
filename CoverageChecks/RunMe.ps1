@@ -172,7 +172,6 @@ foreach ($DC in $AllDomainControllersPS) {
                 $ADDSDBPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'DSA Working Directory'
                 $ADDSLogPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'Database log files path'
                 $ADDSSYSVOLPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\Netlogon\Parameters | Get-ItemProperty).SYSVOL
-                $ImportantVolumes = @(($ADDSDBPath -split '\\')[0],($ADDSLogPath -split '\\')[0],($ADDSSYSVOLPath -split '\\')[0])
 
                 $OutputObjectParams = @{
                     ComputerName = $env:COMPUTERNAME
@@ -190,13 +189,13 @@ foreach ($DC in $AllDomainControllersPS) {
                     $PercentFree = (($Freespace / $TotalSize) * 100)
                     # Only add AD DS volumes
                     if ($Disk.DeviceId -eq ($ADDSDBPath -split '\\')[0]) {
-                        $OutputObjectParams.Add("ADDS volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                        $OutputObjectParams.Add("ADDS volume % free",([math]::round($PercentFree)))
                     }
                     if ($Disk.DeviceId -eq ($ADDSLogPath -split '\\')[0]) {
-                        $OutputObjectParams.Add("ADDS log volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                        $OutputObjectParams.Add("ADDS log volume % free",([math]::round($PercentFree)))
                     }
                     if ($Disk.DeviceId -eq ($ADDSSYSVOLPath -split '\\')[0]) {
-                        $OutputObjectParams.Add("SYSVOL volume $($Disk.DeviceId -replace ':','') % free",([math]::round($PercentFree)))
+                        $OutputObjectParams.Add("SYSVOL volume % free",([math]::round($PercentFree)))
                     }
                 }
                 $OutputObjectParams
@@ -206,7 +205,7 @@ foreach ($DC in $AllDomainControllersPS) {
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
-            $DCResponse = [PSCustomObject]$DCResponseparams
+            $DCResponse = New-Object -TypeName 'PSCustomObject' -Property $OutputObjectParams
             $AllDCInfo = $AllDCInfo + $DCResponse
         } # try
         catch {
