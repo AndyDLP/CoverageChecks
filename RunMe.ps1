@@ -252,7 +252,7 @@ $AllDCInfo = @()
 $FailedDCInfo = @()
 $IgnoredDC
 
-# incremental counter
+# incremental counter#
 $inc = 1
 
 foreach ($DC in $AllDomainControllersPS) {
