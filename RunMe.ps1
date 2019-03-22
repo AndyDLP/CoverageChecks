@@ -264,15 +264,10 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 } # foreach domain
 
-
 # DC INFO
-
-# Lists
 $AllDCInfo = @()
 $FailedDCInfo = @()
 $AllDCBacklogs = @()
-
-# incremental counter#
 $inc = 1
 
 foreach ($DC in $AllDomainControllersPS) {
@@ -312,8 +307,6 @@ foreach ($DC in $AllDomainControllersPS) {
                     NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
                     DNSServiceStatus = (Get-Service -Name 'DNS').Status
                     IsServerCore = $IsServerCore
-                    # Add DFS-R / FRS?
-
                 }
                 foreach ($Disk in $DiskInfo) {
                     $Freespace = $Disk.FreeSpace / 1GB
@@ -366,6 +359,27 @@ foreach ($DC in $AllDomainControllersPS) {
         $FailedDCInfo = $FailedDCInfo + $FailObject
     } # else server not responding fine
 } # foreach DC
+
+##### AD Object info #####
+
+# OU no delete
+$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false}
+
+# user no expire
+$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true}
+
+# admin group membership (domain, admin, schema, enterprise)
+$DAMembers = Get-ADGroupMember -Identity "Domain Admins" -Recursive
+$AdminMembers = Get-ADGroupMember -Identity "Administrators" -Recursive
+$SchemaMembers = Get-ADGroupMember -Identity "Schema Admins" -Recursive
+$EnterpriseMembers = Get-ADGroupMember -Identity "Enterprise Admins" -Recursive
+
+# reversible encryption
+$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true}
+
+# top 10 failed logins
+# count by user?
+$FailedLogins = Get-WinEvent -FilterHashtable @{LogName = 'Security'; ID = 4625; StartTime = (Get-Date).addDays(-1)}
 
 if ($IsVerbose) {
     Write-Verbose "Domain Info:"
