@@ -253,7 +253,7 @@ $AllDCInfo = @()
 $FailedDCInfo = @()
 $AllDCBacklogs = @()
 
-# incremental counter
+# incremental counter#
 $inc = 1
 
 foreach ($DC in $AllDomainControllersPS) {
@@ -286,7 +286,7 @@ foreach ($DC in $AllDomainControllersPS) {
                     ComputerName = $env:COMPUTERNAME
                     OperatingSystem = $OSInfo.Caption
                     LastBootTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
-                    IsVirtual = if ($PCInfo.model -like "*virtual*") {$true} else {$false}
+                    IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU')) {$true} else {$false}
                     IsGlobalCatalog = $args[0].IsGlobalCatalog
                     NTDSServiceStatus = (Get-Service -Name 'NTDS').Status
                     NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
@@ -316,7 +316,7 @@ foreach ($DC in $AllDomainControllersPS) {
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
-            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
+            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...3GR2U9HWQEfbu BWEkNEA;GNBAERJG KSDJF;KdbfLI hsa:LDLBNHDISFkyuwGCOIUHD;ZOTGJPIDHUVODTOugbweJWNER;KInfo87sdf86\QWYTelKQJWEN;KQJHFI7SDTC&sa
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
             $DCResponse = New-Object -TypeName 'PSCustomObject' -Property $OutputObjectParams
