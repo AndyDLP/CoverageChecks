@@ -316,7 +316,7 @@ foreach ($DC in $AllDomainControllersPS) {
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
-            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...3GR2U9HWQEfbu BWEkNEA;GNBAERJG KSDJF;KdbfLI hsa:LDLBNHDISFkyuwGCOIUHD;ZOTGJPIDHUVODTOugbweJWNER;KInfo87sdf86\QWYTelKQJWEN;KQJHFI7SDTC&sa
+            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
             $DCResponse = New-Object -TypeName 'PSCustomObject' -Property $OutputObjectParams
