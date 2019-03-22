@@ -256,7 +256,7 @@ foreach ($Domain in $ThisForest.Domains) {
         SYSVOLReplicationMode = $SYSVOLReplicationMode
     }
     if ($null -ne $Differences) {
-        #$ADInfoParams.Add('','')
+        $ADInfoParams.Add('Notes',"MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)")
     } else {
         # All good / do nothing
     }
