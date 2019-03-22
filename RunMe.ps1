@@ -67,7 +67,9 @@ $OnlyShowWarnings = $OnlyShowWarnings -as [boolean]
 $IsVerbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
 
 # Get PSScriptRoot on PS 2.0
-$PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+if (-not $PSScriptRoot) {
+    $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+}
 
 # Todays date in filename compatible format
 $Today = (Get-Date -Format "dd-MM-yy")
@@ -76,13 +78,13 @@ $Today = (Get-Date -Format "dd-MM-yy")
 $ErrorActionPreference = "SilentlyContinue"
 Stop-Transcript | Out-Null
 $ErrorActionPreference = "Continue"
-Start-Transcript -Path (Join-Path -Path $PSScriptRoot -ChildPath "Logs\$Today.log") -Append
+Start-Transcript -Path (Join-Path -Path $PSScriptRoot -ChildPath "$Today.log") -Append
 
 # Required modules
 Import-Module ActiveDirectory -ErrorAction Stop
 
 # Optional modules
-Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
+#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 # Make sure that the user running script is a domain admin
 # Ensures full access to all servers for full info grab
@@ -119,14 +121,15 @@ function Get-DfsrBacklog {
         Get the backlog information from one DC
     
     .EXAMPLE
-        PS C:\> $DCList = ( (Get-ADDomain).ReplicaDirectoryServers + (Get-ADDomain).ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController | Select-Object -ExpandProperty Name
+        PS C:\> $DCList = Get-ADDomainController -Filter * | Select-Object -ExpandProperty Name
         PS C:\> Get-DfsrBacklog -ComputerName $DCList | Format-Table -AutoSize
 
-        Get backlog info from DCs in the current domain
+        Get backlog info from all DCs in the current domain
     
     .NOTES
+        Original from the internet (unsure of exact source)
+        Updated 2019-03-20 by Andy DLP
         adelapole@eci.com
-        Updated 2019-03-20
 
     .LINK
         www.eci.com
@@ -169,29 +172,38 @@ function Get-DfsrBacklog {
                                 $SendingMember = $computer
                                 $ReceivingMember = $ConnectionName
                             }
-                            $BLCommand = "dfsrdiag Backlog /RGName:'" + $RGName + "' /RFName:'" + $RFName + "' /SendingMember:" + $SendingMember + " /ReceivingMember:" + $ReceivingMember
-                            if ($computer -eq $env:ComputerName) {
-                                $Backlog = Invoke-Expression -Command $BLCommand
-                            } else {
-                                $Backlog = Invoke-Command -ComputerName $computer -HideComputerName -ScriptBlock {
-                                    $Backlog = Invoke-Expression -Command $args[0]
-                                    $Backlog
-                                } -ArgumentList $BLCommand
-                            }
-                            $BackLogFilecount = 0
-                            foreach ($item in $Backlog) {
-                                if ($item -ilike "*Backlog File count*") {
-                                    $BacklogFileCount = [int]$Item.Split(":")[1].Trim()
-                                }
-                            }
-                            Write-Verbose "$BacklogFileCount files in backlog $SendingMember->$ReceivingMember for $RGName"
-                            $outputObject = [PSCustomObject]@{
+
+                            $outputObjectParams = @{
                                 ComputerName = $computer
                                 ReplicationGroupname = $RGName
                                 SendingMember = $SendingMember
                                 ReceivingMember = $ReceivingMember
-                                BacklogFileCount = $BacklogFileCount
                             }
+
+                            if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).installationtype -ne 'Server Core') {
+                                # Neither DFSRdiag nor DFSR diag tool are available on server core? :(
+                                $BLCommand = "dfsrdiag Backlog /RGName:'" + $RGName + "' /RFName:'" + $RFName + "' /SendingMember:" + $SendingMember + " /ReceivingMember:" + $ReceivingMember
+                                if ($computer -eq $env:ComputerName) {
+                                    $Backlog = Invoke-Expression -Command $BLCommand
+                                } else {
+                                    $Backlog = Invoke-Command -ComputerName $computer -HideComputerName -ScriptBlock {
+                                        $Backlog = Invoke-Expression -Command $args[0]
+                                        $Backlog
+                                    } -ArgumentList $BLCommand
+                                }
+                                $BackLogFilecount = 0
+                                foreach ($item in $Backlog) {
+                                    if ($item -ilike "*Backlog File count*") {
+                                        $BacklogFileCount = [int]$Item.Split(":")[1].Trim()
+                                    }
+                                }
+                                Write-Verbose "$BacklogFileCount files in backlog $SendingMember->$ReceivingMember for $RGName"
+                                $outputObjectParams.Add('BacklogFileCount',$BackLogFilecount)
+                            } else {
+                                Write-Verbose "DFSRDIAG tool / DFSR PS cmdlets are not available on Server Core! Skipping..."
+                                $outputObjectParams.Add('BacklogFileCount',-1)
+                            }
+                            $outputObject = [PSCustomObject]$outputObjectParams
                             $outputObject
                         } # Closing iterate through all folders
                     } # Closing  If Connection enabled
@@ -279,9 +291,10 @@ foreach ($DC in $AllDomainControllersPS) {
                 $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
                 $PCInfo = Get-WmiObject -Class 'win32_computersystem'
                 $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
-                $ADDSDBPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'DSA Working Directory'
-                $ADDSLogPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'Database log files path'
-                $ADDSSYSVOLPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\Netlogon\Parameters | Get-ItemProperty).SYSVOL
+                $ADDSDBPath = (Get-Item 'HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters' | Get-ItemProperty).'DSA Working Directory'
+                $ADDSLogPath = (Get-Item 'HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters' | Get-ItemProperty).'Database log files path'
+                $ADDSSYSVOLPath = (Get-Item 'HKLM:SYSTEM\CurrentControlSet\Services\Netlogon\Parameters' | Get-ItemProperty).SYSVOL
+                $IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
                 $OutputObjectParams = @{
                     ComputerName = $env:COMPUTERNAME
                     OperatingSystem = $OSInfo.Caption
@@ -291,12 +304,15 @@ foreach ($DC in $AllDomainControllersPS) {
                     NTDSServiceStatus = (Get-Service -Name 'NTDS').Status
                     NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
                     DNSServiceStatus = (Get-Service -Name 'DNS').Status
+                    IsServerCore = $IsServerCore
+                    # Add DFS-R / FRS?
+
                 }
                 foreach ($Disk in $DiskInfo) {
                     $Freespace = $Disk.FreeSpace / 1GB
                     $TotalSize = $Disk.Size / 1GB
                     $PercentFree = (($Freespace / $TotalSize) * 100)
-                    # Only add AD DS volumes
+                    # Only care about ADDS volumes
                     if ($Disk.DeviceId -eq ($ADDSDBPath -split '\\')[0]) {
                         $OutputObjectParams.Add("ADDS volume % free",([math]::round($PercentFree)))
                     }
@@ -344,10 +360,19 @@ foreach ($DC in $AllDomainControllersPS) {
     } # else server not responding fine
 } # foreach DC
 
+if ($IsVerbose) {
+    Write-Verbose "Domain Info:"
+    $AllDomainInfo | Format-Table -AutoSize
+    Write-Verbose "DC Info:"
+    $AllDCInfo  | Format-Table -AutoSize
+    Write-Verbose "DFSR Backlogs"
+    $AllDCBacklogs | Format-Table -AutoSize
+}
 
 # END AD INFORMATION
 #########################################################
 
+<#
 #########################################################
 # BEGIN MAIN LOOP
 
@@ -388,7 +413,7 @@ foreach ($Server in $ServerList) {
 
 # END MAIN LOOP
 ##########################################################
-
+#>
 
 # Stop script logging
 Stop-Transcript | Out-Null
