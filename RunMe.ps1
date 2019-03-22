@@ -234,14 +234,14 @@ foreach ($Domain in $ThisForest.Domains) {
     $DCRefObj = $AllDomainControllersPS | Select-Object -ExpandProperty ComputerObjectDN
     $DCDiffObj = $AllDomainControllersAD | Select-Object -ExpandProperty DistinguishedName
     $Differences = Compare-Object -ReferenceObject $DCRefObj -DifferenceObject $DCDiffObj
-    if ($null -ne $Differences) {
-        # Domain controller issues!
-        # investigate!
-    } else {
-        # All good / do nothing
-    }
-    
-    $ADInfo = [PSCustomObject]@{
+    $SYSVOLReplicationMode = switch ((Get-ADObject "CN=DFSR-GlobalSettings,CN=System,$($ThisDomain.DistinguishedName)" -Properties 'msDFSR-Flags').'msDFSR-Flags') {
+        0 {'FRS'}
+        16 {'FRS'}
+        32 {'DFSR'}
+        48 {'DFSR'}
+        Default {'FRS'}
+     }
+    $ADInfoParams = @{
         ForestName = $ThisForest.Name
         DomainDNSRoot = $ThisDomain.DNSRoot
         DomainName = $ThisDomain.NetBIOSName
@@ -253,7 +253,14 @@ foreach ($Domain in $ThisForest.Domains) {
         RIDMaster = $ThisDomain.RIDMaster
         InfrastructureMaster = $ThisDomain.InfrastructureMaster
         Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
+        SYSVOLReplicationMode = $SYSVOLReplicationMode
     }
+    if ($null -ne $Differences) {
+        #$ADInfoParams.Add('','')
+    } else {
+        # All good / do nothing
+    }
+    $ADInfo = [PSCustomObject]$ADInfoParams
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 } # foreach domain
 
