@@ -100,111 +100,112 @@ If ($RunningUserGroups -Contains "Domain Admins") {
 }
 
 ########################################################
-# Define functions
+# BEGIN DEFINE FUNCTIONS
 
 function Get-DfsrBacklog {
-    <#
-        .SYNOPSIS
-            Gets DFSR backlogs
-        
-        .DESCRIPTION
-            Gets DFSR backlogs
-        
-        .PARAMETER ComputerName
-            The computer to get DFSR backlogs from
-        
-        .EXAMPLE
-            PS C:\> Get-DfsrBacklog -ComputerName DC01
+<#
+    .SYNOPSIS
+        Gets DFSR backlogs
     
-            Get the backlog information from one DC
-        
-        .EXAMPLE
-            PS C:\> $DCList = ( (Get-ADDomain).ReplicaDirectoryServers + (Get-ADDomain).ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController | Select-Object -ExpandProperty Name
-            PS C:\> Get-DfsrBacklog -ComputerName $DCList | Format-Table -AutoSize
+    .DESCRIPTION
+        Gets DFSR backlogs
     
-            Get backlog info from DCs in the current domain
-        
-        .NOTES
-            adelapole@eci.com
-            Updated 2019-03-20
+    .PARAMETER ComputerName
+        The computer to get DFSR backlogs from
     
-        .LINK
-            www.eci.com
-    #>
-        
-        [CmdletBinding()]
-        param
-        (
-            [Parameter(Mandatory = $true,
-                        ValueFromPipeline = $true,
-                        ValueFromPipelineByPropertyName = $true,
-                        Position = 1,
-                        HelpMessage = 'The computername from which to check backlog')]
-            [ValidateNotNullOrEmpty()]
-            [string[]]$ComputerName
-        )
-    
-        begin {}
-    
-        process {
-            foreach ($computer in $ComputerName) {
-                Write-Verbose "Connecting to $computer"
-                $RGroups = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query "SELECT * FROM DfsrReplicationGroupConfig" -ComputerName $computer
-                foreach ($Group in $RGroups) {
-                    Write-Verbose "Replication group $($Group.ReplicationGroupName)"
-                    $RGFoldersWMIQ = "SELECT * FROM DfsrReplicatedFolderConfig WHERE ReplicationGroupGUID='" + $Group.ReplicationGroupGUID + "'"
-                    $RGFolders = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query  $RGFoldersWMIQ -ComputerName $computer
-                    $RGConnectionsWMIQ = "SELECT * FROM DfsrConnectionConfig WHERE ReplicationGroupGUID='"+ $Group.ReplicationGroupGUID + "'"
-                    $RGConnections = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query $RGConnectionsWMIQ -ComputerName $computer
-                    foreach ($Connection in $RGConnections) {
-                        $ConnectionName = $Connection.PartnerName#.Trim()
-                        if ($Connection.Enabled -eq $True) {
-                            if (Test-Connection -ComputerName $computer -Count 1 -Quiet) {
-                                foreach ($Folder in $RGFolders) {
-                                    $RGName = $Group.ReplicationGroupName
-                                    $RFName = $Folder.ReplicatedFolderName
-                                    if ($Connection.Inbound -eq $True) {
-                                        $SendingMember = $ConnectionName
-                                        $ReceivingMember = $computer
-                                    } else {
-                                        $SendingMember = $computer
-                                        $ReceivingMember = $ConnectionName
-                                    }
-                                    $BLCommand = "dfsrdiag Backlog /RGName:'" + $RGName + "' /RFName:'" + $RFName + "' /SendingMember:" + $SendingMember + " /ReceivingMember:" + $ReceivingMember
-                                    if ($computer -eq $env:ComputerName) {
-                                        $Backlog = Invoke-Expression -Command $BLCommand
-                                    } else {
-                                        $Backlog = Invoke-Command -ComputerName $computer -HideComputerName -ScriptBlock {
-                                            $Backlog = Invoke-Expression -Command $args[0]
-                                            $Backlog
-                                        } -ArgumentList $BLCommand
-                                    }
-                                    $BackLogFilecount = 0
-                                    foreach ($item in $Backlog) {
-                                        if ($item -ilike "*Backlog File count*") {
-                                            $BacklogFileCount = [int]$Item.Split(":")[1].Trim()
-                                        }
-                                    }
-                                    Write-Verbose "$BacklogFileCount files in backlog $SendingMember->$ReceivingMember for $RGName"
-                                    $outputObject = [PSCustomObject]@{
-                                        ComputerName = $computer
-                                        ReplicationGroupname = $RGName
-                                        SendingMember = $SendingMember
-                                        ReceivingMember = $ReceivingMember
-                                        BacklogFileCount = $BacklogFileCount
-                                    }
-                                    $outputObject
-                                } # Closing iterate through all folders
-                            } # Closing  If replies to ping
-                        } # Closing  If Connection enabled
-                    } # Closing iteration through all connections
-                } # Closing iteration through all groups
-            } # foreach computer
-        } # process
-    
-        end {}
-    }
+    .EXAMPLE
+        PS C:\> Get-DfsrBacklog -ComputerName DC01
 
+        Get the backlog information from one DC
+    
+    .EXAMPLE
+        PS C:\> $DCList = ( (Get-ADDomain).ReplicaDirectoryServers + (Get-ADDomain).ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController | Select-Object -ExpandProperty Name
+        PS C:\> Get-DfsrBacklog -ComputerName $DCList | Format-Table -AutoSize
+
+        Get backlog info from DCs in the current domain
+    
+    .NOTES
+        adelapole@eci.com
+        Updated 2019-03-20
+
+    .LINK
+        www.eci.com
+#>
+    
+    [CmdletBinding(PositionalBinding = $true)]
+    param
+    (
+        [Parameter(Mandatory = $true,
+                    ValueFromPipeline = $true,
+                    ValueFromPipelineByPropertyName = $true,
+                    Position = 0,
+                    HelpMessage = 'The computername from which to check backlog')]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$ComputerName
+    )
+
+    begin {}
+
+    process {
+        foreach ($computer in $ComputerName) {
+            Write-Verbose "Connecting to $computer"
+            $RGroups = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query "SELECT * FROM DfsrReplicationGroupConfig" -ComputerName $computer
+            foreach ($Group in $RGroups) {
+                Write-Verbose "Replication group $($Group.ReplicationGroupName)"
+                $RGFoldersWMIQ = "SELECT * FROM DfsrReplicatedFolderConfig WHERE ReplicationGroupGUID='" + $Group.ReplicationGroupGUID + "'"
+                $RGFolders = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query  $RGFoldersWMIQ -ComputerName $computer
+                $RGConnectionsWMIQ = "SELECT * FROM DfsrConnectionConfig WHERE ReplicationGroupGUID='"+ $Group.ReplicationGroupGUID + "'"
+                $RGConnections = Get-WmiObject -Namespace "root\MicrosoftDFS" -Query $RGConnectionsWMIQ -ComputerName $computer
+                foreach ($Connection in $RGConnections) {
+                    $ConnectionName = $Connection.PartnerName#.Trim()
+                    if ($Connection.Enabled -eq $True) {
+                        foreach ($Folder in $RGFolders) {
+                            $RGName = $Group.ReplicationGroupName
+                            $RFName = $Folder.ReplicatedFolderName
+                            if ($Connection.Inbound -eq $True) {
+                                $SendingMember = $ConnectionName
+                                $ReceivingMember = $computer
+                            } else {
+                                $SendingMember = $computer
+                                $ReceivingMember = $ConnectionName
+                            }
+                            $BLCommand = "dfsrdiag Backlog /RGName:'" + $RGName + "' /RFName:'" + $RFName + "' /SendingMember:" + $SendingMember + " /ReceivingMember:" + $ReceivingMember
+                            if ($computer -eq $env:ComputerName) {
+                                $Backlog = Invoke-Expression -Command $BLCommand
+                            } else {
+                                $Backlog = Invoke-Command -ComputerName $computer -HideComputerName -ScriptBlock {
+                                    $Backlog = Invoke-Expression -Command $args[0]
+                                    $Backlog
+                                } -ArgumentList $BLCommand
+                            }
+                            $BackLogFilecount = 0
+                            foreach ($item in $Backlog) {
+                                if ($item -ilike "*Backlog File count*") {
+                                    $BacklogFileCount = [int]$Item.Split(":")[1].Trim()
+                                }
+                            }
+                            Write-Verbose "$BacklogFileCount files in backlog $SendingMember->$ReceivingMember for $RGName"
+                            $outputObject = [PSCustomObject]@{
+                                ComputerName = $computer
+                                ReplicationGroupname = $RGName
+                                SendingMember = $SendingMember
+                                ReceivingMember = $ReceivingMember
+                                BacklogFileCount = $BacklogFileCount
+                            }
+                            $outputObject
+                        } # Closing iterate through all folders
+                    } # Closing  If Connection enabled
+                } # Closing iteration through all connections
+            } # Closing iteration through all groups
+        } # foreach computer
+    } # process
+
+    end {}
+}
+
+
+# END DEFINE FUNCTIONS
+########################################################
 
 ########################################################
 # GET AD INFORMATION
@@ -250,7 +251,7 @@ foreach ($Domain in $ThisForest.Domains) {
 # Lists
 $AllDCInfo = @()
 $FailedDCInfo = @()
-$IgnoredDC
+$AllDCBacklogs = @()
 
 # incremental counter
 $inc = 1
@@ -274,14 +275,13 @@ foreach ($DC in $AllDomainControllersPS) {
         try {
             $DCPSSession = New-PSSession -ComputerName $DC.name
             # Invoke it all, don't rely on the inbuilt remoting of Get-WmiObject or other cmdlets
-            $OutputObjectParams = Invoke-Command -ComputerName $DC.name -HideComputerName -ScriptBlock {
+            $OutputObjectParams = Invoke-Command -Session $DCPSSession -HideComputerName -ScriptBlock {
                 $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
                 $PCInfo = Get-WmiObject -Class 'win32_computersystem'
                 $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
                 $ADDSDBPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'DSA Working Directory'
                 $ADDSLogPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\NTDS\Parameters | Get-ItemProperty).'Database log files path'
                 $ADDSSYSVOLPath = (Get-Item HKLM:SYSTEM\CurrentControlSet\Services\Netlogon\Parameters | Get-ItemProperty).SYSVOL
-
                 $OutputObjectParams = @{
                     ComputerName = $env:COMPUTERNAME
                     OperatingSystem = $OSInfo.Caption
@@ -310,7 +310,10 @@ foreach ($DC in $AllDomainControllersPS) {
                 $OutputObjectParams
             } -ErrorAction Stop -ArgumentList $DC
 
-            Invoke-Command -ScriptBlock ${function:foo} -argumentlist "Bye!"
+            Write-Verbose "Gathering DFS backlog information from $($DC.name)"
+            $DCBacklog = Invoke-Command -Session $DCPSSession -ScriptBlock ${function:Get-DfsrBacklog} -ArgumentList $DC.Name
+            $DCBacklog = $DCBacklog | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
+            $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
