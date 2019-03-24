@@ -227,6 +227,7 @@ function Get-DfsrBacklog {
 $ThisForest = Get-ADForest
 
 $AllDomainInfo = @()
+$AllDomainObjectInfo =@()
 foreach ($Domain in $ThisForest.Domains) {
     $ThisDomain = Get-ADDomain -Identity $Domain
     $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
@@ -262,6 +263,26 @@ foreach ($Domain in $ThisForest.Domains) {
     }
     $ADInfo = [PSCustomObject]$ADInfoParams
     $AllDomainInfo = $AllDomainInfo + $ADInfo
+
+    ##### AD Object info #####
+    $DomainObjectInfoParams = @{}
+    # OU no delete
+    [array]$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false} | Select-Object -ExpandProperty DistinguishedName
+    
+    # user no expire
+    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+
+    # reversible encryption
+    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+
+    $DomainObjectInfoParams = @{
+        DomainName = $ThisDomain.NetBIOSName
+        OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs -join ', ') } else { 'None - ALL OK' }
+        UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW -join ', ') } else { 'None - ALL OK' }
+        UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
+    }
+    $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
+    $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
 } # foreach domain
 
 # DC INFO
@@ -360,26 +381,6 @@ foreach ($DC in $AllDomainControllersPS) {
     } # else server not responding fine
 } # foreach DC
 
-##### AD Object info #####
-
-# OU no delete
-$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false}
-
-# user no expire
-$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true}
-
-# admin group membership (domain, admin, schema, enterprise)
-$DAMembers = Get-ADGroupMember -Identity "Domain Admins" -Recursive
-$AdminMembers = Get-ADGroupMember -Identity "Administrators" -Recursive
-$SchemaMembers = Get-ADGroupMember -Identity "Schema Admins" -Recursive
-$EnterpriseMembers = Get-ADGroupMember -Identity "Enterprise Admins" -Recursive
-
-# reversible encryption
-$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true}
-
-# top 10 failed logins
-# count by user?
-$FailedLogins = Get-WinEvent -FilterHashtable @{LogName = 'Security'; ID = 4625; StartTime = (Get-Date).addDays(-1)}
 
 if ($IsVerbose) {
     Write-Verbose "Domain Info:"
@@ -393,7 +394,6 @@ if ($IsVerbose) {
 # END AD INFORMATION
 #########################################################
 
-<#
 #########################################################
 # BEGIN MAIN LOOP
 
@@ -423,7 +423,24 @@ foreach ($Server in $ServerList) {
 
         if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
             # Server responding fine
+            try {
+                $ServerSSession = New-PSSession -ComputerName $Server.name
+                $Response = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
+                    $OutputObjectParams = @{}
+                    # Run it all locally
+                    $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
+                    foreach ($Disk in $DiskInfo) {
+                        $Freespace = $Disk.FreeSpace / 1GB
+                        $TotalSize = $Disk.Size / 1GB
+                        $PercentFree = [math]::Round((($Freespace / $TotalSize) * 100))
+                    }
+                        
 
+                } -ArgumentList $Server
+            }
+            catch {
+
+            }
         } else {
 
         } # else server not responding fine
@@ -434,7 +451,6 @@ foreach ($Server in $ServerList) {
 
 # END MAIN LOOP
 ##########################################################
-#>
 
 # Stop script logging
 Stop-Transcript | Out-Null
