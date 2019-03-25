@@ -84,7 +84,7 @@ Start-Transcript -Path (Join-Path -Path $PSScriptRoot -ChildPath "$Today.log") -
 Import-Module ActiveDirectory,GroupPolicy -ErrorAction Stop
 
 # Optional modules
-#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
+Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 # Make sure that the user running script is a domain admin
 # Ensures full access to all servers for full info grab
@@ -560,12 +560,11 @@ function Get-GPOChanges {
     )
     
     begin {
-        $AllGPOs = Get-GPO -All
-        Write-Verbose "Exporting current GPOs to: $ExportLocation"
-        Write-Verbose ""
     }
 
     process {
+        $AllGPOs = Get-GPO -All
+        Write-Verbose "Exporting current GPOs to: $ThisRunFolder"
         foreach ($GPO in $AllGPOs) {
             # Export XML to export location
             $DisplayNameNoDots = ($GPo.DisplayName).Replace(".", "")
@@ -592,6 +591,8 @@ function Get-GPOChanges {
                 $LastGPOContent = Get-Content (Join-Path -Path $LastRunFolder -ChildPath "$DisplayNameNoDots.xml") -ErrorAction Stop | Where-Object {
                     $_ -notlike "*<ReadTime>*"
                 }
+                if ($null -eq $CurrentGPOContent) { $CurrentGPOContent = "" }
+                if ($null -eq $LastGPOContent) { $LastGPOContent = "" }
                 $Differences = Compare-Object -ReferenceObject $LastGPOContent -DifferenceObject $CurrentGPOContent
                 If (($Differences.count) -gt 0) {
                     # GPO Changed
@@ -611,8 +612,15 @@ function Get-GPOChanges {
             }
         }
         
-        $LastGPOs = Get-ChildItem -Path $LastRunFolder -Name
-        $NewGpos = Get-ChildItem -Path $ThisRunFolder -Name
+        $LastGPOs = Get-ChildItem -Path $LastRunFolder | Select-Object -ExpandProperty Name
+        $NewGpos = Get-ChildItem -Path $ThisRunFolder | Select-Object -ExpandProperty Name
+
+        # Delete old and move current run
+        Get-ChildItem -Path $LastRunFolder | Remove-Item -Include "*.xml" -Force
+        Get-ChildItem -Path $ThisRunFolder | Move-Item -Destination $LastRunFolder -Force
+
+        if ($null -eq $NewGpos) { $NewGpos = @("") }
+        if ($null -eq $LastGPOs) { $LastGPOs = @("") }
         $Differences = Compare-Object -ReferenceObject $NewGpos -DifferenceObject $LastGPOs
 
         $NewGPOList = $Differences | Where-Object {
@@ -639,9 +647,6 @@ function Get-GPOChanges {
     }
     
     end {
-        # Delete old and move current run
-        Get-ChildItem -Path $LastRunFolder | Remove-Item -Include "*.xml" -Force
-        Get-ChildItem -Path $ThisRunFolder | Move-Item -Destination $LastRunFolder -Force
     }
 }
 
@@ -665,11 +670,11 @@ foreach ($Domain in $ThisForest.Domains) {
     $DCDiffObj = $AllDomainControllersAD | Select-Object -ExpandProperty DistinguishedName
     $Differences = Compare-Object -ReferenceObject $DCRefObj -DifferenceObject $DCDiffObj
     $SYSVOLReplicationMode = switch ((Get-ADObject "CN=DFSR-GlobalSettings,CN=System,$($ThisDomain.DistinguishedName)" -Properties 'msDFSR-Flags').'msDFSR-Flags') {
-        0 {'FRS'}
-        16 {'FRS'}
-        32 {'DFSR'}
-        48 {'DFSR'}
-        Default {'FRS'}
+        0 {'FRS - 0'}
+        16 {'FRS - 1'}
+        32 {'DFSR - 2'}
+        48 {'DFSR - 3'}
+        Default {'Unknown'}
      }
     $ADInfoParams = @{
         ForestName = $ThisForest.Name
@@ -718,12 +723,12 @@ foreach ($Domain in $ThisForest.Domains) {
 $AllDCInfo = @()
 $FailedDCInfo = @()
 $AllDCBacklogs = @()
-$inc = 1
+$inc = 0
 
 foreach ($DC in $AllDomainControllersPS) {
-    Write-Verbose "Starting checks on: $($DC.Name)"
-    Write-Verbose "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"
     $inc++
+    Write-Verbose "Starting checks on: $($DC.Name)"
+    Write-Verbose "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"# GPO Changes - Only run once
 
     # Find if PC is ON and responding to WinRM
     $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
@@ -902,27 +907,29 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
-                    $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
-                    if ($null -ne $SharedPrinters) {
-                        $PrinterList = @()
-                        foreach ($Printer in $SharedPrinters) {
-                            $PrinterObjectParams = @{
-                                ComputerName = $env:COMPUTERNAME
-                                PrinterName = $Printer.Name
-                                PrinterDriver = $Printer.DriverName
-                                PublishedToAD = $Printer.Published
+                    if ((Get-Service Spooler).Status -eq 'Running') {
+                        $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
+                        if ($null -ne $SharedPrinters) {
+                            $PrinterList = @()
+                            foreach ($Printer in $SharedPrinters) {
+                                $PrinterObjectParams = @{
+                                    ComputerName = $env:COMPUTERNAME
+                                    PrinterName = $Printer.Name
+                                    PrinterDriver = $Printer.DriverName
+                                    PublishedToAD = $Printer.Published
+                                }
+                                try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
+                                catch { $PrinterAddress = $Printer.PortName }
+    
+                                $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                                $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
+                                $PrinterObjectParams.Add('IsPingable',$IsPingable)
+    
+                                $PrinterObject = [PSCustomObject]$PrinterObjectParams
+                                [array]$PrinterList = $PrinterList + $PrinterObject
                             }
-                            try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
-                            catch { $PrinterAddress = $Printer.PortName }
-
-                            $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
-                            $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
-                            $PrinterObjectParams.Add('IsPingable',$IsPingable)
-
-                            $PrinterObject = [PSCustomObject]$PrinterObjectParams
-                            [array]$PrinterList = $PrinterList + $PrinterObject
+                            $OutputObjectParams.Add('SharedPrinters',$PrinterList)
                         }
-                        $OutputObjectParams.Add('SharedPrinters',$PrinterList)
                     }
 
                     # scheduled task with domain / local credentials (non-system)
@@ -958,12 +965,6 @@ foreach ($Server in $ServerList) {
                 # pending reboot
                 $RebootInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-PendingReboot}
                 $OutputObjectParams.Add('PendingReboot',$RebootInfo)
-
-                # GPO Changes - Only run once
-                if ($inc -eq 1) {
-                    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\XML\LastRun" -ThisRunFolder "$PSScriptRoot\XML\ThisRun"
-                    $OutputObjectParams.Add('GPOChanges',$GPOChanges)
-                }
 
                 # create object from params
                 $ServerObject = [PSCustomObject]$OutputObjectParams
@@ -1007,7 +1008,6 @@ foreach ($Server in $ServerList) {
     } # else ignored
 } # main foreach
 
-
 if ($IsVerbose) {
     Write-Verbose 'Domain Info:'
     $AllServerInfo | Format-List *
@@ -1015,9 +1015,10 @@ if ($IsVerbose) {
     $FailedServers | Format-List *
 }
 
-
 # END MAIN LOOP
 ##########################################################
+
+
 
 # Stop script logging
 Stop-Transcript | Out-Null
