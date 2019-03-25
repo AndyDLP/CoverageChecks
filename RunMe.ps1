@@ -384,11 +384,14 @@ foreach ($DC in $AllDomainControllersPS) {
 
 if ($IsVerbose) {
     Write-Verbose "Domain Info:"
-    $AllDomainInfo | Format-Table -AutoSize
+    $AllDomainInfo | Format-List *
     Write-Verbose "DC Info:"
-    $AllDCInfo  | Format-Table -AutoSize
+    $AllDCInfo  |  Format-List *
     Write-Verbose "DFSR Backlogs"
-    $AllDCBacklogs | Format-Table -AutoSize
+    $AllDCBacklogs | Format-List *
+    Write-Verbose "Failed DC info"
+    $FailedDCInfo | Format-List *
+    Write-Verbose ""
 }
 
 # END AD INFORMATION
@@ -403,6 +406,9 @@ $ServerList = Get-ADComputer -Filter { (OperatingSystem -Like "Windows *Server*"
 
 # incremental counter
 $inc = 1
+
+$AllServerInfo = @()
+$FailedServers = @()
 
 foreach ($Server in $ServerList) {
     Write-Verbose "Server: $($Server.Name) --- $inc / $($ServerList.count)"
@@ -424,30 +430,86 @@ foreach ($Server in $ServerList) {
         if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
             # Server responding fine
             try {
-                $ServerSSession = New-PSSession -ComputerName $Server.name
-                $Response = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
-                    $OutputObjectParams = @{}
-                    # Run it all locally
+                # Run it all locally via an invoked session
+                $ServerSSession = New-PSSession -ComputerName $Server.name -ErrorAction Stop
+                $ServerResponse = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
+                    $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
+                    $PCInfo = Get-WmiObject -Class 'win32_computersystem'
                     $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
+
+                    $OutputObjectParams = @{
+                        ComputerName = $env:COMPUTERNAME
+                        IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
+                        OperatingSystem = $OSInfo.Caption
+                        IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU')) { $true } else { $false }
+                    }
+
+                    $Disks = @()
                     foreach ($Disk in $DiskInfo) {
                         $Freespace = $Disk.FreeSpace / 1GB
                         $TotalSize = $Disk.Size / 1GB
                         $PercentFree = [math]::Round((($Freespace / $TotalSize) * 100))
+                        $DiskObj = [PSCustomObject]@{
+                            Volume = $Disk.DeviceId
+                            TotalSize = $TotalSize
+                            FreeSpace = $Freespace
+                            PercentFree = $PercentFree
+                        }
+                        $Disks = $Disks + $DiskObj
                     }
-                        
+                    $OutputObjectParams.Add('Disks',$Disks)
 
-                } -ArgumentList $Server
+                    $OutputObject = [PSCustomObject]$OutputObjectParams
+                    $OutputObject
+                } -ArgumentList $Server -ErrorAction Stop
+
+                $AllServerInfo = $AllServerInfo + $ServerResponse
             }
             catch {
-
+                Write-Warning "Failed to gather information from server: $($server.Name)"
+                $FailObject = [PSCustomObject]@{
+                    ComputerName = $Server.Name
+                    Server = $Server
+                    Error = $_
+                    ServerResponding = $ServerResponding
+                    ServerWSManrunning = $ServerWSManrunning
+                    Ignored = $false
+                }
+                $FailedServers = $FailedServers + $FailObject
             }
         } else {
-
+            $FailObject = [PSCustomObject]@{
+                ComputerName = $Server.Name
+                Server = $Server
+                Error = $null
+                ServerResponding = $ServerResponding
+                ServerWSManrunning = $ServerWSManrunning
+                Ignored = $false
+            }
+            $FailedServers = $FailedServers + $FailObject
         } # else server not responding fine
     } else {
-
+        Write-Verbose "Ignored server: $($Server.Name)"
+        $FailObject = [PSCustomObject]@{
+            ComputerName = $Server.Name
+            Server = $Server
+            Error = $null
+            ServerResponding = $null
+            ServerWSManrunning = $null
+            Ignored = $true
+        }
+        $FailedServers = $FailedServers + $FailObject
     } # else ignored
 } # main foreach
+
+
+if ($IsVerbose) {
+    Write-Verbose 'Domain Info:'
+    $AllServerInfo | Format-List *
+    Write-Verbose 'Failed servers:'
+    $FailedServers | Format-List *
+}
+
 
 # END MAIN LOOP
 ##########################################################
