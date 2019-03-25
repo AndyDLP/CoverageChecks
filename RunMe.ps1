@@ -81,7 +81,7 @@ $ErrorActionPreference = "Continue"
 Start-Transcript -Path (Join-Path -Path $PSScriptRoot -ChildPath "$Today.log") -Append
 
 # Required modules
-Import-Module ActiveDirectory -ErrorAction Stop
+Import-Module ActiveDirectory,GroupPolicy -ErrorAction Stop
 
 # Optional modules
 #Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
@@ -570,6 +570,11 @@ function Get-GPOChanges {
             # Export XML to export location
             $DisplayNameNoDots = ($GPo.DisplayName).Replace(".", "")
             $DisplayNameNoDots = $DisplayNameNoDots.Replace(":", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("\", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("/", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("?", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("<", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace(">", "")
             $FileWithPath = Join-Path -Path $ThisRunFolder -ChildPath "$DisplayNameNoDots.xml"
             
             Write-Verbose "Original name: $($GPO.DisplayName)"
@@ -747,7 +752,7 @@ foreach ($DC in $AllDomainControllersPS) {
                     ComputerName = $env:COMPUTERNAME
                     OperatingSystem = $OSInfo.Caption
                     LastBootTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
-                    IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU')) {$true} else {$false}
+                    IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                     IsGlobalCatalog = $args[0].IsGlobalCatalog
                     NTDSServiceStatus = (Get-Service -Name 'NTDS').Status
                     NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
@@ -870,7 +875,7 @@ foreach ($Server in $ServerList) {
                     $OutputObjectParams = @{
                         ComputerName = $env:COMPUTERNAME
                         OperatingSystem = $OSInfo.Caption
-                        IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU')) { $true } else { $false }
+                        IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                         IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
                     }
 
@@ -956,7 +961,7 @@ foreach ($Server in $ServerList) {
 
                 # GPO Changes - Only run once
                 if ($inc -eq 1) {
-                    $GPOChanges = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-GPOChanges}
+                    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\XML\LastRun" -ThisRunFolder "$PSScriptRoot\XML\ThisRun"
                     $OutputObjectParams.Add('GPOChanges',$GPOChanges)
                 }
 
