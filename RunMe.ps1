@@ -78,7 +78,8 @@ $Today = (Get-Date -Format "dd-MM-yy")
 $ErrorActionPreference = "SilentlyContinue"
 Stop-Transcript | Out-Null
 $ErrorActionPreference = "Continue"
-Start-Transcript -Path (Join-Path -Path $PSScriptRoot -ChildPath "$Today.log") -Append
+if ($null -eq "$PSScriptRoot\Logs") { mkdir "$PSScriptRoot\Logs" | Out-Null }
+Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Logs" -ChildPath "$Today.log") -Append
 
 # Required modules
 Import-Module ActiveDirectory,GroupPolicy -ErrorAction Stop
@@ -698,6 +699,11 @@ foreach ($Domain in $ThisForest.Domains) {
     $ADInfo = [PSCustomObject]$ADInfoParams
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
+
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
+    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun"
+
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
     # OU no delete
@@ -714,6 +720,7 @@ foreach ($Domain in $ThisForest.Domains) {
         OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs -join ', ') } else { 'None - ALL OK' }
         UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW -join ', ') } else { 'None - ALL OK' }
         UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
+        GPOChanges = $GPOChanges
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
