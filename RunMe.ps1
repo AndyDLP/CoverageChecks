@@ -831,14 +831,14 @@ Write-Verbose "Searching for windows servers in domain: $CurrentDomainName"
 $ServerList = Get-ADComputer -Filter { (OperatingSystem -Like "Windows *Server*") } -Properties *
 
 # incremental counter
-$inc = 1
+$inc = 0
 
 $AllServerInfo = @()
 $FailedServers = @()
 
 foreach ($Server in $ServerList) {
-    Write-Verbose "Server: $($Server.Name) --- $inc / $($ServerList.count)"
     $inc++
+    Write-Verbose "Server: $($Server.Name) --- $inc / $($ServerList.count)"
 
     if ($IgnoredServers -notcontains $Server.Name) {
         # Server is not filtered
@@ -858,6 +858,7 @@ foreach ($Server in $ServerList) {
             try {
                 # Run it all locally via an invoked session
                 $ServerSSession = New-PSSession -ComputerName $Server.name -ErrorAction Stop
+                $OutputObjectParams = @{}
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
 
                     # Get some WMI info about the machine
@@ -897,42 +898,52 @@ foreach ($Server in $ServerList) {
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
                     $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
-                    $PrinterList = @()
-                    foreach ($Printer in $SharedPrinters) {
-                        $PrinterObjectParams = @{
-                            ComputerName = $env:COMPUTERNAME
-                            PrinterName = $Printer.Name
-                            PrinterDriver = $Printer.DriverName
-                            PublishedToAD = $Printer.Published
+                    if ($null -ne $SharedPrinters) {
+                        $PrinterList = @()
+                        foreach ($Printer in $SharedPrinters) {
+                            $PrinterObjectParams = @{
+                                ComputerName = $env:COMPUTERNAME
+                                PrinterName = $Printer.Name
+                                PrinterDriver = $Printer.DriverName
+                                PublishedToAD = $Printer.Published
+                            }
+                            try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
+                            catch { $PrinterAddress = $Printer.PortName }
+
+                            $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                            $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
+                            $PrinterObjectParams.Add('IsPingable',$IsPingable)
+
+                            $PrinterObject = [PSCustomObject]$PrinterObjectParams
+                            [array]$PrinterList = $PrinterList + $PrinterObject
                         }
-                        try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
-                        catch { $PrinterAddress = $Printer.PortName }
-
-                        $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
-                        $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
-                        $PrinterObjectParams.Add('IsPingable',$IsPingable)
-
-                        $PrinterObject = [PSCustomObject]$PrinterObjectParams
-                        $PrinterList = $PrinterList + $PrinterObject
+                        $OutputObjectParams.Add('SharedPrinters',$PrinterList)
                     }
-                    $OutputObjectParams.Add('SharedPrinters',$PrinterList)
 
                     # scheduled task with domain / local credentials (non-system)
                     # or system account task created by domain user
                     $IgnoredTaskRunAsUsers = @('INTERACTIVE','SYSTEM','NT AUTHORITY\SYSTEM','LOCAL SERVICE','NETWORK SERVICE','Users','Administrators','Everyone','Authenticated Users')
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
                     $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
-                    $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
+                    if ($null -ne $NonStandardScheduledTasks) {
+                        $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
+                    }
 
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService')
                     $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
-                    $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
+                    if ($null -ne $NonStandardServices) {
+                        $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
+                    }
 
                     # Expired certificates / less than 30 days
-
-
+                    $ExpiredSoonCertificates = Get-ChildItem -Path 'cert:\LocalMachine\My\' -Recurse | Where-Object -FilterScript { (($_.NotBefore -gt (Get-Date)) -or ($_.NotAfter -lt (Get-Date).AddDays(30))) -and ($null -ne $_.Thumbprint) }
+                    if ($null -ne $ExpiredSoonCertificates) {
+                        $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
+                    }
                     
+                    # Send the resulting hashtable out
+                    $OutputObjectParams
                 } -ArgumentList $Server,$AllDomainInfo -ErrorAction Stop
 
                 # Get Windows Update info
@@ -943,7 +954,11 @@ foreach ($Server in $ServerList) {
                 $RebootInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-PendingReboot}
                 $OutputObjectParams.Add('PendingReboot',$RebootInfo)
 
-                # GPO changes?
+                # GPO Changes - Only run once
+                if ($inc -eq 1) {
+                    $GPOChanges = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-GPOChanges}
+                    $OutputObjectParams.Add('GPOChanges',$GPOChanges)
+                }
 
                 # create object from params
                 $ServerObject = [PSCustomObject]$OutputObjectParams
