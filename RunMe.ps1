@@ -27,8 +27,8 @@
 		PS C:\> .\RunMe.ps1 
 	
     .NOTES
-        Andrew de la Pole
-        2019
+        Andrew de la Pole - 2019
+        Version 0.7.0
 	
     .LINK
         www.eci.com
