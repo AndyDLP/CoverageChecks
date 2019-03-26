@@ -1052,9 +1052,26 @@ $fragments = @()
 
 # AD Fragements
 foreach ($domain in $AllDomainInfo) {
-    $DomainInfo = ($Domain | Format-List ForestName,DomainDNSRoot,DomainName,ForestMode,DomainMode,SYSVOLReplicationMode,SchemaMaster,DomainNamingMaster,PDCEmulator,RIDMaster,InfrastructureMaster,Sites,Notes | Out-String)
-    $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Format-List DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges | Out-String)
-    $fragments = $fragments + ("<H2>AD info for: $($domain.DomainName)</H2>" + $DomainInfo + "<br><H2>AD Objects for: $($Domain.DomainName)</H2>" + $ObjectInfo + "<br>")
+    $DomainString = "<table>
+    <colgroup><col/><col/></colgroup>
+    <tr><th>Attribute</th><th>Value</th></tr>"
+
+    foreach ($Property in ($domain.PSObject.Properties.name)) {
+        $DomainString = $DomainString + ("<tr><td>$Property</td>" + "<td>" + ($domain.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
+    
+    }
+    $DomainString = $DomainString + "</table>"
+
+    $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Select-Object DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges)
+    $ObjectString = "<table>
+    <colgroup><col/><col/></colgroup>
+    <tr><th>Object</th><th>Value</th></tr>"
+    foreach ($Property in ($ObjectInfo.PSObject.Properties.name)) {
+        $ObjectString = $ObjectString + ("<tr><td>$Property</td>" + "<td>" + ($ObjectInfo.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
+    }
+    $ObjectString = $ObjectString + "</table>"
+
+    $fragments = $fragments + ("<H2>AD info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
 }
 
 # DC Info fragments
