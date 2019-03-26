@@ -493,7 +493,7 @@ function Get-PendingReboot {
                     'CCMClientSDK',
                     'PendComputerRename',
                     'PendFileRename',
-                    'PendFileRenVal',
+                    #'PendFileRenVal',
                     'RebootPending'
                 )}
             New-Object -TypeName PSObject -Property @{
@@ -548,16 +548,16 @@ function Get-GPOChanges {
     [OutputType([PSCustomObject])]
     param
     (
-        [Parameter(Mandatory = $false,
+        [Parameter(Mandatory = $true,
                     Position = 0,
                     HelpMessage = 'The folder path to where the last runs XML files will be stored and checked')]
         [ValidateScript({ Test-Path -Path $_ })]
-        [string]$LastRunFolder = '.\XML\LastRun',
-        [Parameter(Mandatory = $false,
+        [string]$LastRunFolder,
+        [Parameter(Mandatory = $true,
                     Position = 1,
                     HelpMessage = 'The folder to save the current export of GPOs as XML')]
         [ValidateScript({ Test-Path -Path $_ })]
-        [string]$ThisRunFolder = '.\XML\ThisRun'
+        [string]$ThisRunFolder
     )
     
     begin {
@@ -700,9 +700,9 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
 
-    if ($null -eq (Get-Item -Path "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
-    if ($null -eq (Get-Item -Path "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
-    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\XML\$($ThisDomain.NetBIOSName)\ThisRun"
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
+    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
 
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
@@ -720,7 +720,7 @@ foreach ($Domain in $ThisForest.Domains) {
         OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs) } else { 'None - ALL OK' }
         UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW) } else { 'None - ALL OK' }
         UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW) } else { 'None - ALL OK' }
-        GPOChanges = $GPOChanges
+        GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
@@ -896,7 +896,7 @@ foreach ($Server in $ServerList) {
                         InstallDate = $OSInfo.ConvertToDateTime($OSInfo.InstallDate)
                         LastBootUpTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
                         CPUs = ($CPUInfo | Select-Object -ExpandProperty NumberOfLogicalProcessors | Measure-Object -Sum).Sum
-                        MemoryGB = ($PCInfo.TotalPhysicalMemory / 1GB)
+                        MemoryGB = [math]::Round(($PCInfo.TotalPhysicalMemory / 1GB))
                     }
                     $OutputObjectParams.Add('GeneralInformation',$InfoObject)
 
@@ -905,13 +905,13 @@ foreach ($Server in $ServerList) {
                     foreach ($Disk in $DiskInfo) {
                         $Freespace = $Disk.FreeSpace / 1GB
                         $TotalSize = $Disk.Size / 1GB
-                        $PercentFree = [math]::Round((($Freespace / $TotalSize) * 100))
+                        $PercentFree = (($Freespace / $TotalSize) * 100)
                         $DiskObj = [PSCustomObject]@{
                             ComputerName = $env:COMPUTERNAME
                             Volume = $Disk.DeviceId
-                            TotalSize = $TotalSize
-                            FreeSpace = $Freespace
-                            PercentFree = $PercentFree
+                            TotalSize = [math]::Round($TotalSize)
+                            FreeSpace = [math]::Round($Freespace)
+                            PercentFree = [math]::Round($PercentFree)
                         }
                         $Disks = $Disks + $DiskObj
                     }
@@ -965,7 +965,8 @@ foreach ($Server in $ServerList) {
 
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService')
-                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+                    $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
+                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { (($_.StartName -notin $IgnoredServiceRunAsUsers) -and ($_.Name -notin $IgnoredServiceNames)) -or ( ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
                     }
@@ -1047,30 +1048,44 @@ if ($IsVerbose) {
 # BEGIN OUTPUT
 
 $CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'headers.css') -Raw
-
 $fragments = @()
 
+# AD Fragements
+foreach ($domain in $AllDomainInfo) {
+    $DomainInfo = ($Domain | Format-List ForestName,DomainDNSRoot,DomainName,ForestMode,DomainMode,SYSVOLReplicationMode,SchemaMaster,DomainNamingMaster,PDCEmulator,RIDMaster,InfrastructureMaster,Sites,Notes | Out-String)
+    $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Format-List DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges | Out-String)
+    $fragments = $fragments + ("<H2>AD info for: $($domain.DomainName)</H2>" + $DomainInfo + "<br><H2>AD Objects for: $($Domain.DomainName)</H2>" + $ObjectInfo + "<br>")
+}
+
+# DC Info fragments
+$fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
+
+# DFSR fragments
+$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+
+# Server Info fragments
 $UniqueProperties = @()
 foreach ($ServerInfo in $AllServerInfo) {
     $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
 }
 $UniqueProperties = $UniqueProperties | Select-Object -Unique
 Write-Verbose ($UniqueProperties | Out-String)
-
 foreach ($Property in $UniqueProperties) {
-    $info = $AllServerInfo | Select-Object -ExpandProperty $Property
+    $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
     Write-Verbose ($info | Out-String)
     $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
     Write-Verbose ($frag | Out-String)
     $fragments = $fragments + $frag
 }
 
+# Build HTML file
 $OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '') -Head $CSSHeaders
-
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Reports" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Reports" | Out-Null }
 $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" -Encoding ascii -Force
 
-Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
+if ($IsVerbose) {
+    Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
+}
 
 # END OUTPUT
 ##########################################################
