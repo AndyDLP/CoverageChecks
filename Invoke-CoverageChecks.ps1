@@ -59,6 +59,8 @@ Param (
     [ValidateNotNullOrEmpty()]
 	[string]$FromEmail = "ServerChecks@example.com"
 )
+########################################################
+# Setup system variables
 
 # Convert SwitchParameter type to boolean
 $OnlyShowWarnings = $OnlyShowWarnings -as [boolean]
@@ -78,8 +80,8 @@ $Today = (Get-Date -Format "dd-MM-yy")
 $ErrorActionPreference = "SilentlyContinue"
 Stop-Transcript | Out-Null
 $ErrorActionPreference = "Continue"
-if ($null -eq "$PSScriptRoot\Logs") { mkdir "$PSScriptRoot\Logs" | Out-Null }
-Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Logs" -ChildPath "$Today.log") -Append
+if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
+Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log") -Append
 
 # Required modules
 Import-Module ActiveDirectory,GroupPolicy -ErrorAction Stop
@@ -101,6 +103,7 @@ If ($RunningUserGroups -Contains "Domain Admins") {
     Write-Warning "Exiting script..."
     exit
 }
+
 
 ########################################################
 # BEGIN DEFINE FUNCTIONS
@@ -707,19 +710,19 @@ foreach ($Domain in $ThisForest.Domains) {
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
     # OU no delete
-    [array]$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false}
+    [array]$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false} | Select-Object -ExpandProperty DistinguishedName
     
     # user no expire
-    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator
+    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
 
     # reversible encryption
-    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator
+    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
 
     $DomainObjectInfoParams = @{
         DomainName = $ThisDomain.NetBIOSName
-        OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs) } else { 'None - ALL OK' }
-        UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW) } else { 'None - ALL OK' }
-        UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW) } else { 'None - ALL OK' }
+        OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs -join ', ') } else { 'None - ALL OK' }
+        UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW -join ', ') } else { 'None - ALL OK' }
+        UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
         GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
@@ -1047,7 +1050,7 @@ if ($IsVerbose) {
 ##########################################################
 # BEGIN OUTPUT
 
-$CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'headers.css') -Raw
+$CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'Data\headers.css') -Raw
 $fragments = @()
 
 # AD Fragements
@@ -1055,13 +1058,11 @@ foreach ($domain in $AllDomainInfo) {
     $DomainString = "<table>
     <colgroup><col/><col/></colgroup>
     <tr><th>Attribute</th><th>Value</th></tr>"
-
     foreach ($Property in ($domain.PSObject.Properties.name)) {
         $DomainString = $DomainString + ("<tr><td>$Property</td>" + "<td>" + ($domain.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     
     }
     $DomainString = $DomainString + "</table>"
-
     $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Select-Object DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges)
     $ObjectString = "<table>
     <colgroup><col/><col/></colgroup>
@@ -1070,7 +1071,6 @@ foreach ($domain in $AllDomainInfo) {
         $ObjectString = $ObjectString + ("<tr><td>$Property</td>" + "<td>" + ($ObjectInfo.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     }
     $ObjectString = $ObjectString + "</table>"
-
     $fragments = $fragments + ("<H2>AD info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
 }
 
