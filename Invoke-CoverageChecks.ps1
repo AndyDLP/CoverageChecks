@@ -129,7 +129,7 @@ $DefaultFilters = @(
         Property = 'PercentFree'
         Comparison = 'lt'
         Value = 20
-    },
+    }
 )
 
 ########################################################
