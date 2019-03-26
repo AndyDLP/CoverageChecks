@@ -503,8 +503,8 @@ function Get-PendingReboot {
                 CCMClientSDK=$SCCM
                 PendComputerRename=$CompPendRen
                 PendFileRename=$PendFileRename
-                PendFileRenVal=$RegValuePFRO
-                RebootPending=($WUAURebootReq -or $SCCM)
+                #PendFileRenVal=$RegValuePFRO
+                RebootPending=($WUAURebootReq -or $SCCM -or $CBSRebootPend)
             } | Select-Object @SelectSplat
     
         } Catch {
@@ -800,6 +800,8 @@ foreach ($DC in $AllDomainControllersPS) {
 
             $DCResponse = New-Object -TypeName 'PSCustomObject' -Property $OutputObjectParams
             $AllDCInfo = $AllDCInfo + $DCResponse
+
+            Remove-PSSession -Session $DCPSSession
         } # try
         catch {
             Write-Verbose "$($DC.Name) failed"
@@ -880,15 +882,23 @@ foreach ($Server in $ServerList) {
                     # Get some WMI info about the machine
                     $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
                     $PCInfo = Get-WmiObject -Class 'win32_computersystem'
+                    $CPUInfo = Get-WmiObject -Class 'win32_processor'
                     $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
 
                     # General info
-                    $OutputObjectParams = @{
+                    $OutputObjectParams = @{}
+
+                    $InfoObject = [PSCustomObject]@{
                         ComputerName = $env:COMPUTERNAME
                         OperatingSystem = $OSInfo.Caption
                         IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                         IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
+                        InstallDate = $OSInfo.ConvertToDateTime($OSInfo.InstallDate)
+                        LastBootUpTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
+                        CPUs = ($CPUInfo | Select-Object -ExpandProperty NumberOfLogicalProcessors | Measure-Object -Sum).Sum
+                        MemoryGB = ($PCInfo.TotalPhysicalMemory / 1GB)
                     }
+                    $OutputObjectParams.Add('GeneralInformation',$InfoObject)
 
                     # Disk info
                     $Disks = @()
@@ -897,6 +907,7 @@ foreach ($Server in $ServerList) {
                         $TotalSize = $Disk.Size / 1GB
                         $PercentFree = [math]::Round((($Freespace / $TotalSize) * 100))
                         $DiskObj = [PSCustomObject]@{
+                            ComputerName = $env:COMPUTERNAME
                             Volume = $Disk.DeviceId
                             TotalSize = $TotalSize
                             FreeSpace = $Freespace
@@ -909,7 +920,12 @@ foreach ($Server in $ServerList) {
                     # local admins
                     # TODO: Filter domain admins / Administrator account
                     $LocalAdmins = net localgroup "Administrators" | Where-Object -FilterScript {$_ -AND $_ -notmatch "command completed successfully"} | Select-Object -Skip 4
-                    $OutputObjectParams.Add('LocalAdministrators',$LocalAdmins)
+                    $AdminObj = [PSCustomObject]@{
+                        ComputerName = $env:COMPUTERNAME
+                        Group = 'Administrators'
+                        Members = $LocalAdmins
+                    }
+                    $OutputObjectParams.Add('LocalAdministrators',$AdminObj)
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
@@ -942,7 +958,7 @@ foreach ($Server in $ServerList) {
                     # or system account task created by domain user
                     $IgnoredTaskRunAsUsers = @('INTERACTIVE','SYSTEM','NT AUTHORITY\SYSTEM','LOCAL SERVICE','NETWORK SERVICE','Users','Administrators','Everyone','Authenticated Users')
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
-                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
+                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
                     }
@@ -957,6 +973,7 @@ foreach ($Server in $ServerList) {
                     # Expired certificates / less than 30 days
                     $ExpiredSoonCertificates = Get-ChildItem -Path 'cert:\LocalMachine\My\' -Recurse | Where-Object -FilterScript { (($_.NotBefore -gt (Get-Date)) -or ($_.NotAfter -lt (Get-Date).AddDays(30))) -and ($null -ne $_.Thumbprint) }
                     if ($null -ne $ExpiredSoonCertificates) {
+                        $ExpiredSoonCertificates | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name ComputerName -Value $env:COMPUTERNAME }
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
                     }
                     
@@ -975,6 +992,8 @@ foreach ($Server in $ServerList) {
                 # create object from params
                 $ServerObject = [PSCustomObject]$OutputObjectParams
                 $AllServerInfo = $AllServerInfo + $ServerObject
+
+                Remove-PSSession -Session $ServerSSession
             }
             catch {
                 Write-Warning "Failed to gather information from server: $($server.Name)"
@@ -1031,11 +1050,22 @@ $CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'heade
 
 $fragments = @()
 
-foreach ($Property in $AllServerInfo.PSObject.Properties.Name) {
-    $fragments = $fragments + ($AllServerInfo.$Property | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+$UniqueProperties = @()
+foreach ($ServerInfo in $AllServerInfo) {
+    $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
+}
+$UniqueProperties = $UniqueProperties | Select-Object -Unique
+Write-Verbose ($UniqueProperties | Out-String)
+
+foreach ($Property in $UniqueProperties) {
+    $info = $AllServerInfo | Select-Object -ExpandProperty $Property
+    Write-Verbose ($info | Out-String)
+    $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+    Write-Verbose ($frag | Out-String)
+    $fragments = $fragments + $frag
 }
 
-$OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '<br>') -Head $CSSHeaders
+$OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '') -Head $CSSHeaders
 
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Reports" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Reports" | Out-Null }
 $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" -Encoding ascii -Force
