@@ -841,7 +841,7 @@ if ($IsVerbose) {
 #########################################################
 
 #########################################################
-# BEGIN MAIN LOOP
+# BEGIN MAIN INFO GATHERING LOOP
 
 # Get all Windows servers with all properties
 Write-Verbose "Searching for windows servers in domain: $CurrentDomainName"
@@ -849,7 +849,6 @@ $ServerList = Get-ADComputer -Filter { (OperatingSystem -Like "Windows *Server*"
 
 # incremental counter
 $inc = 0
-
 $AllServerInfo = @()
 $FailedServers = @()
 
@@ -862,7 +861,7 @@ foreach ($Server in $ServerList) {
         Write-Verbose "Starting checks on: $($Server.Name)"
 
         # Find if PC is ON and responding to WinRM
-        $ServerResponding = Test-Connection -Count 1 -ComputerName $Server.Name -Quiet
+        $ServerResponding = Test-Connection -Count 2 -ComputerName $Server.Name -Quiet
         # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
         try {
             Test-WSMan -ComputerName $Server.Name -ErrorAction Stop | Out-Null
@@ -1022,10 +1021,33 @@ if ($IsVerbose) {
     $FailedServers | Format-List *
 }
 
-# END MAIN LOOP
+# END MAIN INFO GATHERING LOOP
+##########################################################
+
+##########################################################
+# BEGIN OUTPUT
+
+$CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'headers.css') -Raw
+
+$fragments = @()
+
+foreach ($Property in $AllServerInfo.PSObject.Properties.Name) {
+    $fragments = $fragments + ($AllServerInfo.$Property | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+}
+
+$OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '<br>') -Head $CSSHeaders
+
+if ($null -eq (Get-Item -Path "$PSScriptRoot\Reports" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Reports" | Out-Null }
+$OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" -Encoding ascii -Force
+
+Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
+
+# END OUTPUT
 ##########################################################
 
 
+##########################################################
+# CLEAN UP
 
 # Stop script logging
 Stop-Transcript | Out-Null

@@ -1,8 +1,4 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd">
-<html><head><title>Server Checks Report</title><meta http-equiv="refresh" content="120" />
 <style type="text/css">
-
-
 body {
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
 }
@@ -11,7 +7,7 @@ body {
  
 table {
 	border-collapse: collapse;
-	border: 3px grey solid;
+	border: 1px black solid;
 	font: 10pt Verdana, Geneva, Arial, Helvetica, sans-serif;
 	color: black;
 	margin-bottom: 10px;
@@ -91,4 +87,3 @@ div.second{ margin-left: 30px; }
 table{ margin-left: 20px; }
 
 </style>
-</head>
