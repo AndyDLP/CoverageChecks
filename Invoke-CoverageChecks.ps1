@@ -60,7 +60,26 @@ Param (
 	[string]$FromEmail = "ServerChecks@example.com"
 )
 ########################################################
-# Setup system variables
+# USER DEFINED VARIABLES
+
+# Define a filter for the outputted data - Will supercede any default filters 
+# To add more filters, clone the below and remove the hashes (#) to enable it.
+# Make sure that for multiple filters, you have a comma between filter definitions
+# Please ensure each property is only filtered once (Categories are fine to chain filters)
+$UserFilters = @(
+
+    #[PSCustomObject]@{
+    #    Category = 'Disks'
+    #    Property = 'PercentFree'
+    #    Comparison = 'lt' # The same as normal powershell operators without the -
+    #    Value = 20
+    #}
+    #,
+
+)
+
+# DO NOT MODIFY BELOW THIS LINE
+########################################################
 
 # Convert SwitchParameter type to boolean
 $OnlyShowWarnings = $OnlyShowWarnings -as [boolean]
@@ -104,6 +123,14 @@ If ($RunningUserGroups -Contains "Domain Admins") {
     exit
 }
 
+$DefaultFilters = @(
+    [PSCustomObject]@{
+        Category = 'Disks'
+        Property = 'PercentFree'
+        Comparison = 'lt'
+        Value = 20
+    },
+)
 
 ########################################################
 # BEGIN DEFINE FUNCTIONS
