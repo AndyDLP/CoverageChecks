@@ -128,7 +128,7 @@ $DefaultFilters = @(
         Category = 'PendingReboot'
         Type = 'Display'
         Action = 'Include'
-        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','CCMClientSDK','PendComputerRename','RebootPending' )
+        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
         SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
     },
@@ -137,7 +137,7 @@ $DefaultFilters = @(
         Type = 'Display'
         Action = 'Include'
         Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
-        SortingProperty = 'ComputerName'
+        SortingProperty = 'ComputerName','PrinterName'
         SortingType = 'Ascending'
     },
     [PSCustomObject]@{
@@ -855,13 +855,13 @@ foreach ($DC in $AllDomainControllersPS) {
                 $IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
                 $OutputObjectParams = @{
                     ComputerName = $env:COMPUTERNAME
-                    OperatingSystem = $OSInfo.Caption
-                    LastBootTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
+                    OS = $OSInfo.Caption
+                    LastBoot = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
                     IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
-                    IsGlobalCatalog = $args[0].IsGlobalCatalog
-                    NTDSServiceStatus = (Get-Service -Name 'NTDS').Status
-                    NetlogonServiceStatus = (Get-Service -Name 'Netlogon').Status
-                    DNSServiceStatus = (Get-Service -Name 'DNS').Status
+                    IsGC = $args[0].IsGlobalCatalog
+                    NTDSService = (Get-Service -Name 'NTDS').Status
+                    NetlogonService = (Get-Service -Name 'Netlogon').Status
+                    DNSService = (Get-Service -Name 'DNS').Status
                     IsServerCore = $IsServerCore
                 }
                 foreach ($Disk in $DiskInfo) {
@@ -891,7 +891,9 @@ foreach ($DC in $AllDomainControllersPS) {
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
-            $DCResponse = New-Object -TypeName 'PSCustomObject' -Property $OutputObjectParams
+            $DCResponse = [PSCustomObject]$OutputObjectParams
+            # Reorder in selected order
+            $DCResponse = $DCResponse | Select-Object -Property ComputerName,NTDSService,NETLOGONService,DNSService,NetlogonAccessible,SYSVOLAccessible,"ADDS volume % free","ADDS log volume % free","SYSVOL volume % free",IsVirtual,IsGC,IsServerCore,OS,LastBoot
             $AllDCInfo = $AllDCInfo + $DCResponse
 
             Remove-PSSession -Session $DCPSSession
@@ -1051,15 +1053,15 @@ foreach ($Server in $ServerList) {
                     # or system account task created by domain user
                     $IgnoredTaskRunAsUsers = @('INTERACTIVE','SYSTEM','NT AUTHORITY\SYSTEM','LOCAL SERVICE','NETWORK SERVICE','Users','Administrators','Everyone','Authenticated Users')
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
-                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
+                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
                     }
 
                     # services with domain / local credentials (non-system)
-                    $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService')
+                    $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService','NT AUTHORITY\NETWORK SERVICE','NT AUTHORITY\SYSTEM')
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
-                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { (($_.StartName -notin $IgnoredServiceRunAsUsers) -and ($_.Name -notin $IgnoredServiceNames)) -or ( ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.Name -notin $IgnoredServiceNames) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
                     }
@@ -1142,6 +1144,7 @@ if ($IsVerbose) {
 
 $CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'Data\headers.css') -Raw
 $fragments = @()
+$fragments = $fragments + "<H1>ECI Coverage Report - $(Get-Date)</H1>"
 
 # AD Fragements
 foreach ($domain in $AllDomainInfo) {
@@ -1161,14 +1164,27 @@ foreach ($domain in $AllDomainInfo) {
         $ObjectString = $ObjectString + ("<tr><td>$Property</td>" + "<td>" + ($ObjectInfo.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     }
     $ObjectString = $ObjectString + "</table>"
-    $fragments = $fragments + ("<H2>AD info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
+    $fragments = $fragments + ("<H2>Domain info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>Monitored AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
 }
 
 # DC Info fragments
 $fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p><br>----------------------------------------------------------------------------<br>")
+$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+
+if ($FailedDCInfo.Count -gt 0) {
+    $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $fragments = $fragments + ($FailedDCInfo | Select-Object -Property ComputerName,ServerResponding,ServerWSManRunning | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive Domain Controllers</H2>')
+}
+
+if ($FailedServers.Count -gt 0) {
+    $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $fragments = $fragments + ($FailedServers | Select-Object -Property ComputerName,Error,ServerResponding,ServerWSManRunning,Ignored | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive servers</H2>')
+}
+
+$fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+$fragments = $fragments + '<H1>All Server Information</H1>'
 
 # Server Info fragments
 $UniqueProperties = @()
@@ -1227,6 +1243,10 @@ $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" 
 
 if ($IsVerbose) {
     Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
+}
+
+if ($SendEmail) {
+    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -ErrorAction Continue
 }
 
 # END OUTPUT

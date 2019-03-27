@@ -2,11 +2,9 @@
 body {
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
   	margin: auto;
+	max-width: 85%;
 }
- 
-#report { 
-	margin: auto;
-}
+
  
 table {
 	border-collapse: collapse;
@@ -15,7 +13,6 @@ table {
 	color: black;
 	margin-bottom: 10px;
 	box-shadow: 10px 10px 5px #888;
-	max-width: 1024px;
 }
  
 table td {
@@ -38,6 +35,7 @@ table th {
 
 
 h1 {
+	text-align: center;
 	clear: both; font-size: 130%;
 	color:#354B5E;
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
