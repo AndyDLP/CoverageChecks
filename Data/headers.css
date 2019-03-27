@@ -79,10 +79,10 @@ table.list td:nth-child(1) {
 }
  
 table.list td:nth-child(2) { padding-left: 7px; }
-table tr:nth-child(even) td:nth-child(even) { background: #dae5f4; }
-table tr:nth-child(odd) td:nth-child(odd) { background: #b8d1f3; }
-table tr:nth-child(even) td:nth-child(odd) { background: #dae5f4; }
-table tr:nth-child(odd) td:nth-child(even) { background: #b8d1f3; }
+table tr:nth-child(even) td:nth-child(even) { background: #ececec; }
+table tr:nth-child(odd) td:nth-child(odd) { background: #c8c8c8; }
+table tr:nth-child(even) td:nth-child(odd) { background: #ececec; }
+table tr:nth-child(odd) td:nth-child(even) { background: #c8c8c8; }
 div.column { width: 320px; float: left; }
 div.first{ padding-right: 20px; border-right: 3px grey solid; }
 div.second{ margin-left: 30px; }

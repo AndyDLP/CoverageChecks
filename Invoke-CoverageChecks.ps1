@@ -113,7 +113,7 @@ $DefaultFilters = @(
         Type = 'Display'
         Action = 'Include'
         Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
-        SortingProperty = 'ComputerName'
+        SortingProperty = @('ComputerName','Last Run Time')
         SortingType = 'Ascending'
     },
     [PSCustomObject]@{
@@ -150,6 +150,8 @@ $DefaultFilters = @(
     }
 )
 
+$VCenters = @()
+
 # DO NOT MODIFY BELOW THIS LINE
 ########################################################
 
@@ -172,9 +174,16 @@ if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out
 Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log") -Append
 
 # Required modules
-Import-Module ActiveDirectory,GroupPolicy -ErrorAction Stop
+$RequiredModules = @(
+    'ActiveDirectory',
+    'GroupPolicy'
+)
+if ($VCenters.count -gt 0) {$RequiredModules += 'VMWare.PowerCLI'}
+
+Import-Module -Name $RequiredModules -ErrorAction Stop
 
 # Optional modules
+
 Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 # Make sure that the user running script is a domain admin
@@ -792,7 +801,12 @@ foreach ($Domain in $ThisForest.Domains) {
 
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
+    $str = @()
     $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
+    if ($null -ne $GPOChanges) { 
+        $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
+        $GPOChanges = $str -join ', '
+    }
 
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
@@ -932,6 +946,44 @@ if ($IsVerbose) {
 }
 
 # END AD INFORMATION
+#########################################################
+
+#########################################################
+# EXCHANGE
+
+$ExchangeServerList = @()
+foreach ($Domain in $AllDomainInfo) {
+    $ExchangeServerList += (Get-ADObject -Filter {objectCategory -eq "msExchExchangeServer"} -SearchBase "cn=Configuration,$((Get-ADDomain -Identity $domain.DNSRoot).DistinguishedName)" | Select-Object -ExpandProperty Name)
+}
+# SERVER CHECKS
+# dns
+# ping
+# uptime
+# version
+# IsEdge server
+# ISHub transport server
+# IsClient access
+# ISMailbox server
+# Test service health
+# Exch v15 service health?
+# Get queues / lengths
+# get PF DBs - mounted?
+# Get MB DBs - mounted?
+# MAPI connectivity
+# mail flow
+# 
+# DAG CHECKS
+# DB servers
+# DB copies
+# copy queue
+# replay queue
+# replay lag
+# truncation lag times
+# 
+# 
+
+
+# END EXCHANGE
 #########################################################
 
 #########################################################
@@ -1195,41 +1247,52 @@ foreach ($Property in $UniqueProperties) {
     $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
     # Filter the data as described in the filters defined above
     foreach ($filter in $MatchingFilters) {
-        if ($filter.Type -eq 'Property') {
-            if ($filter.value -is [array]) {
-                [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
-            } else {
-                [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
+        switch ($filter.type) {
+            'Property' { 
+                if ($filter.value -is [array]) {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
+                } else {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
+                }
+                $FilterScript = [Scriptblock]::Create($str)
+                $info = $info | Where-Object $FilterScript -ErrorAction Continue
+             }
+            'Display' { 
+                $SelectSplat = @{}
+                if ($Filter.Action -eq 'Include') {
+                    $SelectSplat.Add('Property',$Filter.Properties)
+                } elseif ($filter.Action -eq 'Exclude') {
+                    $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
+                } else {
+                    Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+                }
+                $SortSplat = @{
+                    Property = $Filter.SortingProperty
+                }
+                if ($Filter.SortingType -eq 'Ascending') {
+                    # Normal behaviour
+                } elseif ($Filter.sortingType -eq 'Descending') {
+                    $SortSplat.Add('Descending',$true)
+                } else {
+                    Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                }
+                $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
+             }
+            'Hidden' { 
+                $info = $null
+             }
+            Default {
+                # Filter nothing
+                Write-Warning "Failed to filter with wrong type $($Filter.Type)"
             }
-            $FilterScript = [Scriptblock]::Create($str)
-            $info = $info | Where-Object $FilterScript -ErrorAction Continue
-        } else {
-            $SelectSplat = @{}
-            if ($Filter.Action -eq 'Include') {
-                $SelectSplat.Add('Property',$Filter.Properties)
-            } elseif ($filter.Action -eq 'Exclude') {
-                $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
-            } else {
-                Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
-            }
-            $SortSplat = @{
-                Property = $Filter.SortingProperty
-            }
-            if ($Filter.SortingType -eq 'Ascending') {
-                # Normal behaviour
-            } elseif ($Filter.sortingType -eq 'Descending') {
-                $SortSplat.Add('Descending',$true)
-            } else {
-                Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-            }
-            $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
-        }
+        } # switch filter type
+    }# foreach filter
+    if ($null -ne $info) {
+        Write-Verbose ($info | Out-String)
+        $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+        Write-Verbose ($frag | Out-String)
+        $fragments = $fragments + $frag
     }
-
-    Write-Verbose ($info | Out-String)
-    $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
-    Write-Verbose ($frag | Out-String)
-    $fragments = $fragments + $frag
 }
 $fragments = $fragments + "</div>"
 
