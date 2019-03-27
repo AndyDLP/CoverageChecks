@@ -96,7 +96,7 @@ $DefaultFilters = @(
         Category = 'GeneralInformation'
         Type = 'Display'
         Action = 'Include'
-        Properties = '*'
+        Properties = '*' # A star * means all properties
         SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
     },
@@ -152,9 +152,6 @@ $DefaultFilters = @(
 
 # DO NOT MODIFY BELOW THIS LINE
 ########################################################
-
-# Convert SwitchParameter type to boolean
-$OnlyShowWarnings = $OnlyShowWarnings -as [boolean]
 
 # Check if verbose flag is set to later dump more info
 $IsVerbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
@@ -1246,7 +1243,7 @@ if ($IsVerbose) {
 }
 
 if ($SendEmail) {
-    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -ErrorAction Continue
+    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject "ECI Coverage Report $(Get-Date)" -ErrorAction Continue
 }
 
 # END OUTPUT
