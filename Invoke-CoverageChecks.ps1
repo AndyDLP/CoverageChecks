@@ -1082,9 +1082,9 @@ $fragments = @()
 
 # AD Fragements
 foreach ($domain in $AllDomainInfo) {
-    $DomainString = "<table>
+    $DomainString = '<div id="report"><table>
     <colgroup><col/><col/></colgroup>
-    <tr><th>Attribute</th><th>Value</th></tr>"
+    <tr><th>Attribute</th><th>Value</th></tr>'
     foreach ($Property in ($domain.PSObject.Properties.name)) {
         $DomainString = $DomainString + ("<tr><td>$Property</td>" + "<td>" + ($domain.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     
@@ -1112,7 +1112,7 @@ $UniqueProperties = @()
 foreach ($ServerInfo in $AllServerInfo) {
     $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
 }
-$UniqueProperties = $UniqueProperties | Select-Object -Unique
+$UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
 Write-Verbose ($UniqueProperties | Out-String)
 foreach ($Property in $UniqueProperties) {
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
@@ -1121,6 +1121,7 @@ foreach ($Property in $UniqueProperties) {
     Write-Verbose ($frag | Out-String)
     $fragments = $fragments + $frag
 }
+$fragments = $fragments + "</div>"
 
 # Build HTML file
 $OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '') -Head $CSSHeaders

@@ -1,11 +1,12 @@
 <style type="text/css">
 body {
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
-	max-width: 1024px;
   	margin: auto;
 }
  
-#report { width: 835px; }
+#report { 
+	margin: auto;
+}
  
 table {
 	border-collapse: collapse;
