@@ -70,19 +70,19 @@ Param (
 
 $DefaultFilters = @(
     [PSCustomObject]@{
-        Category = 'Disks'
-        Type = 'Property'
-        Property = 'PercentFree'
-        Comparison = '-lt'
+        Category = 'Disks' # The category / heading to filter
+        Type = 'Property' # for defining thresholds of a property to be included in the tables
+        Property = 'PercentFree' # The property name / column header
+        Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
         Value = 100
     },
     [PSCustomObject]@{
         Category = 'Disks'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = '*'
-        SortingProperty = 'PercentFree'
-        SortingType = 'Ascending'
+        Type = 'Display' # For defining which properties are shown / how it is sorted
+        Action = 'Include' # Include or Exclude are the only valid options
+        Properties = '*' # A star means ALL properties (no filtering on property names)
+        SortingProperty = 'PercentFree' # Sort by which property name
+        SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
     },
     [PSCustomObject]@{
         Category = 'ExpiredSoonCertificates'
