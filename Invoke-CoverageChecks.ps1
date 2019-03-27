@@ -65,17 +65,89 @@ Param (
 # Define a filter for the outputted data - Will supercede any default filters 
 # To add more filters, clone the below and remove the hashes (#) to enable it.
 # Make sure that for multiple filters, you have a comma between filter definitions
-# Please ensure each property is only filtered once (Categories are fine to chain filters)
-$UserFilters = @(
 
-    #[PSCustomObject]@{
-    #    Category = 'Disks'
-    #    Property = 'PercentFree'
-    #    Comparison = 'lt' # The same as normal powershell operators without the -
-    #    Value = 20
-    #}
-    #,
+# This does not apply for AD info / Domain controller info / DFSR info (yet)
 
+$DefaultFilters = @(
+    [PSCustomObject]@{
+        Category = 'Disks'
+        Type = 'Property'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 100
+    },
+    [PSCustomObject]@{
+        Category = 'Disks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = '*'
+        SortingProperty = 'PercentFree'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'ExpiredSoonCertificates'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'GeneralInformation'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = '*'
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'LocalAdministrators'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = '*'
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'NonStandardScheduledTasks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'NonStandardServices'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'PendingReboot'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','CCMClientSDK','PendComputerRename','RebootPending' )
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'SharedPrinters'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    [PSCustomObject]@{
+        Category = 'UpdateInfo'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    }
 )
 
 # DO NOT MODIFY BELOW THIS LINE
@@ -122,15 +194,6 @@ If ($RunningUserGroups -Contains "Domain Admins") {
     Write-Warning "Exiting script..."
     exit
 }
-
-$DefaultFilters = @(
-    [PSCustomObject]@{
-        Category = 'Disks'
-        Property = 'PercentFree'
-        Comparison = 'lt'
-        Value = 20
-    }
-)
 
 ########################################################
 # BEGIN DEFINE FUNCTIONS
@@ -1105,7 +1168,7 @@ foreach ($domain in $AllDomainInfo) {
 $fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p><br>----------------------------------------------------------------------------<br>")
 
 # Server Info fragments
 $UniqueProperties = @()
@@ -1116,6 +1179,40 @@ $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
 Write-Verbose ($UniqueProperties | Out-String)
 foreach ($Property in $UniqueProperties) {
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+    $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
+    # Filter the data as described in the filters defined above
+    foreach ($filter in $MatchingFilters) {
+        if ($filter.Type -eq 'Property') {
+            if ($filter.value -is [array]) {
+                [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
+            } else {
+                [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
+            }
+            $FilterScript = [Scriptblock]::Create($str)
+            $info = $info | Where-Object $FilterScript -ErrorAction Continue
+        } else {
+            $SelectSplat = @{}
+            if ($Filter.Action -eq 'Include') {
+                $SelectSplat.Add('Property',$Filter.Properties)
+            } elseif ($filter.Action -eq 'Exclude') {
+                $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
+            } else {
+                Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+            }
+            $SortSplat = @{
+                Property = $Filter.SortingProperty
+            }
+            if ($Filter.SortingType -eq 'Ascending') {
+                # Normal behaviour
+            } elseif ($Filter.sortingType -eq 'Descending') {
+                $SortSplat.Add('Descending',$true)
+            } else {
+                Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+            }
+            $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
+        }
+    }
+
     Write-Verbose ($info | Out-String)
     $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
     Write-Verbose ($frag | Out-String)
