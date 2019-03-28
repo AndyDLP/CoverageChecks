@@ -1349,6 +1349,9 @@ if ($IsVerbose) {
     Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
 }
 
+# Output to PDF?
+# https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+
 if ($SendEmail) {
     Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
 }
