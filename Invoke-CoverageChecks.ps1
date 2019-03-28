@@ -37,7 +37,7 @@
 Param (
     [Parameter(HelpMessage = "The path to the configuration file")]
     [ValidateScript( { Test-Path -Path $_ } )]
-    [string]$ConfigFile
+    [string]$ConfigFile = "$PSScriptRoot\Invoke-CoverageChecks.config.ps1"
 )
 ########################################################
 # USER DEFINED VARIABLES ARE NOT HERE
@@ -172,35 +172,52 @@ if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array
     )
 }
 
+if ($null -eq $IgnoredServers) {
+    # A comma separated list of servers names (strings) that will not be target for information gathering
+    $IgnoredServers = @()
+}
 
-# A comma separated list of servers names (strings) that will not be target for information gathering
-$IgnoredServers = @()
-
-# Change to $true to enable reporting sending via email
-$SendEmail = $false
+if ($null -eq $SendEmail) {
+    # Change to $true to enable reporting sending via email
+    $SendEmail = $false
+}
 
 # Only define the below if email is enabled
 if ($SendEmail -eq $true) {
-    # A comma separated list of recipients for the email
-    $TargetEmail = @(
-    "recipient1@example.com",
-    "recipient2@example.com"
-    )
 
-    # The SMTP relay that will allow the email
-    $MailServer = "mail.example.com"
+    if ($null -eq $TargetEmail) {
+        # A comma separated list of recipients for the email
+        $TargetEmail = @(
+        "recipient1@example.com",
+        "recipient2@example.com"
+        )
+    }
+
+    if ($null -eq $MailServer) {
+        # The SMTP relay that will allow the email
+        $MailServer = "mail.example.com"
+    }
     
-    # Port used for the SMTP relay
-    $MailPort = 25
+    if ($null -eq $MailPort) {
+        # Port used for the SMTP relay
+        $MailPort = 25
+    }
     
-    # The from address for the report email
-    $FromEmail = "ServerChecks@example.com"
+    if ($null -eq $FromEmail) {
+        # The from address for the report email
+        $FromEmail = "ServerChecks@example.com"
+    }
     
-    # The subject for the report email 
-    $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+    if ($null -eq $MailSubject) {
+        # The subject for the report email 
+        $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+    }
 }
 
-if ($null -eq $VCentersAndESXIHosts) { $VCentersAndESXIHosts = @() }
+if ($null -eq $VCentersAndESXIHosts) {
+    # VCenter servers and ESXI hosts in a comma separated list
+    $VCentersAndESXIHosts = @()
+}
 
 # Required modules
 $RequiredModules = @(
