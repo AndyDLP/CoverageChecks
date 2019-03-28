@@ -750,6 +750,58 @@ function Get-GPOChanges {
     }
 }
 
+function Get-InstalledRoles {
+    <#
+        .SYNOPSIS
+            Gets installed roles
+        
+        .DESCRIPTION
+            Gets installed roles and features
+        
+        .PARAMETER ComputerName
+            The computer to get roles from
+        
+        .EXAMPLE
+            PS C:\> Get-DfsrBacklog -ComputerName DC01
+
+            Get the backlog information from one DC
+        
+        .EXAMPLE
+            PS C:\> Get-InstalledRoles -ComputerName DC01
+
+            Get roles from the machine called DC01
+        
+        .NOTES
+            Updated 2019-03-28 by Andy DLP
+            adelapole@eci.com
+
+        .LINK
+            www.eci.com
+    #>
+    [CmdletBinding(PositionalBinding = $true)]
+    param
+    (
+        [Parameter(Mandatory = $false,
+                    ValueFromPipeline = $true,
+                    ValueFromPipelineByPropertyName = $true,
+                    Position = 0,
+                    HelpMessage = 'The computername from which to check roles')]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$ComputerName = $env:COMPUTERNAME
+    )
+
+    begin {}
+
+    process {
+        foreach ($computer in $ComputerName) {
+            Get-WindowsFeature -ComputerName $computer | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
+        } # foreach computer
+    } # process
+
+    end {}
+}
+
+
 # END DEFINE FUNCTIONS
 ########################################################
 
@@ -893,13 +945,13 @@ foreach ($DC in $AllDomainControllersPS) {
                 $OutputObjectParams
             } -ErrorAction Stop -ArgumentList $DC
 
-            Write-Verbose "Gathering DFS backlog information from $($DC.name)"
+            Write-Verbose "Gathering DFSR backlog information from $($DC.name)"
             $DCBacklog = Invoke-Command -Session $DCPSSession -ScriptBlock ${function:Get-DfsrBacklog} -ArgumentList $DC.Name
-            $DCBacklog = $DCBacklog | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
+            $DCBacklog = $DCBacklog | Where-Object -FilterScript { $_.ReplicationGroupName -eq 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
-            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...
+            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...?
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
             $DCResponse = [PSCustomObject]$OutputObjectParams
@@ -953,7 +1005,7 @@ if ($IsVerbose) {
 
 $ExchangeServerList = @()
 foreach ($Domain in $AllDomainInfo) {
-    $ExchangeServerList += (Get-ADObject -Filter {objectCategory -eq "msExchExchangeServer"} -SearchBase "cn=Configuration,$((Get-ADDomain -Identity $domain.DNSRoot).DistinguishedName)" | Select-Object -ExpandProperty Name)
+    $ExchangeServerList += (Get-ADObject -Filter {objectCategory -eq "msExchExchangeServer"} -SearchBase "cn=Configuration,$((Get-ADDomain -Identity $Domain.DomainDNSRoot).DistinguishedName)" | Select-Object -ExpandProperty Name)
 }
 # SERVER CHECKS
 # dns
@@ -1021,7 +1073,10 @@ foreach ($Server in $ServerList) {
                 # Run it all locally via an invoked session
                 $ServerSSession = New-PSSession -ComputerName $Server.name -ErrorAction Stop
                 $OutputObjectParams = @{}
+                $InstalledRoles = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-InstalledRoles} -ArgumentList $Server.Name
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
+
+                    $InstalledRoles = Get-WindowsFeature -ComputerName $computer | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
 
                     # Get some WMI info about the machine
                     $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
@@ -1037,6 +1092,7 @@ foreach ($Server in $ServerList) {
                         OperatingSystem = $OSInfo.Caption
                         IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                         IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
+                        SMB1Enabled = if ($InstalledRoles -contains 'FS-SMB1') { $true } else { $false }
                         InstallDate = $OSInfo.ConvertToDateTime($OSInfo.InstallDate)
                         LastBootUpTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
                         CPUs = ($CPUInfo | Select-Object -ExpandProperty NumberOfLogicalProcessors | Measure-Object -Sum).Sum
@@ -1125,6 +1181,13 @@ foreach ($Server in $ServerList) {
                     # Send the resulting hashtable out
                     $OutputObjectParams
                 } -ArgumentList $Server,$AllDomainInfo -ErrorAction Stop
+
+                # Get non SYSVOL DFSR backlogs
+                if ($InstalledRoles -contains 'FS-DFS-Replication') {
+                    $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}
+                    $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
+                    $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
+                }
 
                 # Get Windows Update info
                 $UpdateInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-RecentUpdateInfo}
