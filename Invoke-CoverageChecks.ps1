@@ -65,9 +65,10 @@ Param (
 # MODIFY VARIABLES IN THIS CONFIG FILE INSTEAD
 if ($null -ne (Get-Item -Path "$PSScriptRoot\Invoke-CoverageChecks.config.ps1")) {
     # Dot source the config file to import the variables to this script's session
+    Write-Verbose "Importing user settings from '$PSScriptRoot\Invoke-CoverageChecks.config.ps1'"
     . "$PSScriptRoot\Invoke-CoverageChecks.config.ps1"
 } else {
-    Write-Warning "User defined configuration file not found, using default settings"
+    Write-Warning "User defined configuration file not found at '$PSScriptRoot\Invoke-CoverageChecks.config.ps1', using default settings"
 }
 
 # DO NOT MODIFY THIS FILE
