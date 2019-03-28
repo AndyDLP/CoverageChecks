@@ -1,25 +1,23 @@
 <#
-Define a filter for the outputted data - Will supercede any default filters 
-To add more filters, clone the below and remove the hashes (#) to enable it.
+Define a filter for the outputted data
 Make sure that for multiple filters, you have a comma between filter definitions
 
 This does not apply for AD info / Domain controller info / DFSR info (yet)
 
 Possible values for filters:
- - Category   = Whatever the heading is before the table in the outputted report, can change with additional data
- - Type       = Property - For defining thresholds on a property e.g. The example below can be changed to only show Disks with the property 'PercentFree' of less than 30 (%) by change the value to 30
-              = Display  - For defining what properties show and how to sort the output table. Some filters are already in place with this option
-              = Hidden   - Set to this option to fully hide the category (even if there are potential issues within it)
- - Property   = [Only available for a filter type of Property] - Specify the property name / column header to filter on
- - Comparison = [Only available for a filter type of Property] - Specify the comparison i.e. greater than or less than.
-                See PowerShell comparison operators: https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
- - Value      = [Only available for a filter type of Property] - Specify the value to filter against
+ - Category        = Whatever the heading is before the table in the outputted report, can change with additional data
+ - Type            = Property - For defining thresholds on a property e.g. The example below can be changed to only show Disks with the property 'PercentFree' of less than 30 (%) by change the value to 30
+                   = Display  - For defining what properties show and how to sort the output table. Some filters are already in place with this option
+                   = Hidden   - Set to this option to fully hide the category (even if there are potential issues within it)
+ - Property        = [Only available for a filter type of Property] - Specify the property name / column header to filter on
+ - Comparison      = [Only available for a filter type of Property] - Specify the comparison i.e. greater than or less than.
+                     See PowerShell comparison operators: https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
+ - Value           = [Only available for a filter type of Property] - Specify the value to filter against
 
-
-
-
-
-
+ - Action          = [Only available for a filter type of Display] - Specify whether to Include or Exclude properties
+ - Properties      = [Only available for a filter type of Display] - Specify which properties (As a comma separated list of strings) to show / hide. Enter a star "*" for all properties. Is passed verbatim to Select-Object so hashtables work for renaming column headers
+ - SortingProperty = [Only available for a filter type of Display] - Specify a property to sort the resulting table on
+ - SortingType     = [Only available for a filter type of Display] - Specify the sorting type to use; either Ascending or Descending
 
 #>
 
@@ -108,3 +106,32 @@ $DefaultFilters = @(
 # Specify a list of VCenter servers or ESXI hosts to gather information from
 # It is assumed that AD authentication has been enabled for the user running this script
 $VCentersAndESXIHosts = @()
+
+# A comma separated list of servers names (strings) that will not be target for information gathering
+$IgnoredServers = @(
+    "Server1",
+    "Server2"
+)
+
+# Change to $true to enable reporting sending via email
+$SendEmail = $false
+
+# Only define the below if email is enabled
+if ($SendEmail -eq $true) {
+    # A comma separated list of recipients for the email
+    $TargetEmail = @(
+    "recipient1@example.com"
+    )
+
+    # The SMTP relay that will allow the email
+    $MailServer = "mail.example.com"
+    
+    # Port used for the SMTP relay
+    $MailPort = 25
+    
+    # The from address for the report email
+    $FromEmail = "ServerChecks@example.com"
+    
+    # The subject for the report email 
+    $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+}

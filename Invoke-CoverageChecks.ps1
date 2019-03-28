@@ -35,29 +35,9 @@
 #>
 [CmdletBinding()]
 Param (
-    [Parameter(HelpMessage = "An array of server names (strings) to exclude from checks).")]
-    [ValidateNotNullOrEmpty()]
-    [string[]]$IgnoredServers = @(""),
-
-    [Parameter(HelpMessage = "Send an email report once checks are complete")]
-    [ValidateNotNullOrEmpty()]
-    [switch]$SendEmail,
-
-    [Parameter(HelpMessage = "The email address to send the report to")]
-    [ValidateNotNullOrEmpty()]
-    [string]$TargetEmail = "recipient@example.com",
-	
-    [Parameter(HelpMessage = "The SMTP relay to send the mail to / from")]
-    [ValidateNotNullOrEmpty()]
-	[string]$MailServer = "mail.example.com",
-	
-    [Parameter(HelpMessage = "The port used. Default = 25")]
-    [ValidateNotNullOrEmpty()]
-	[int]$MailPort = 25,
-	
-    [Parameter(HelpMessage = "The from email address")]
-    [ValidateNotNullOrEmpty()]
-	[string]$FromEmail = "ServerChecks@example.com"
+    [Parameter(HelpMessage = "The path to the configuration file")]
+    [ValidateScript( { Test-Path -Path $_ } )]
+    [string]$ConfigFile
 )
 ########################################################
 # USER DEFINED VARIABLES ARE NOT HERE
@@ -65,10 +45,10 @@ Param (
 # MODIFY VARIABLES IN THIS CONFIG FILE INSTEAD
 if ($null -ne (Get-Item -Path "$PSScriptRoot\Invoke-CoverageChecks.config.ps1")) {
     # Dot source the config file to import the variables to this script's session
-    Write-Verbose "Importing user settings from '$PSScriptRoot\Invoke-CoverageChecks.config.ps1'"
-    . "$PSScriptRoot\Invoke-CoverageChecks.config.ps1"
+    Write-Verbose "Importing user settings from $ConfigFile"
+    . "$ConfigFile"
 } else {
-    Write-Warning "User defined configuration file not found at '$PSScriptRoot\Invoke-CoverageChecks.config.ps1', using default settings"
+    Write-Warning "User defined configuration file not found at $ConfigFile, using default settings"
 }
 
 # DO NOT MODIFY THIS FILE
@@ -190,6 +170,34 @@ if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array
             SortingType = 'Ascending'
         }
     )
+}
+
+
+# A comma separated list of servers names (strings) that will not be target for information gathering
+$IgnoredServers = @()
+
+# Change to $true to enable reporting sending via email
+$SendEmail = $false
+
+# Only define the below if email is enabled
+if ($SendEmail -eq $true) {
+    # A comma separated list of recipients for the email
+    $TargetEmail = @(
+    "recipient1@example.com",
+    "recipient2@example.com"
+    )
+
+    # The SMTP relay that will allow the email
+    $MailServer = "mail.example.com"
+    
+    # Port used for the SMTP relay
+    $MailPort = 25
+    
+    # The from address for the report email
+    $FromEmail = "ServerChecks@example.com"
+    
+    # The subject for the report email 
+    $MailSubject = "ECI Coverage Checks - $(Get-Date)"
 }
 
 if ($null -eq $VCentersAndESXIHosts) { $VCentersAndESXIHosts = @() }
@@ -1325,7 +1333,7 @@ if ($IsVerbose) {
 }
 
 if ($SendEmail) {
-    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject "ECI Coverage Report $(Get-Date)" -ErrorAction Continue
+    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
 }
 
 # END OUTPUT
