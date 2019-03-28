@@ -60,99 +60,17 @@ Param (
 	[string]$FromEmail = "ServerChecks@example.com"
 )
 ########################################################
-# USER DEFINED VARIABLES
+# USER DEFINED VARIABLES ARE NOT HERE
 
-# Define a filter for the outputted data - Will supercede any default filters 
-# To add more filters, clone the below and remove the hashes (#) to enable it.
-# Make sure that for multiple filters, you have a comma between filter definitions
+# MODIFY VARIABLES IN THIS CONFIG FILE INSTEAD
+if ($null -ne (Get-Item -Path "$PSScriptRoot\Invoke-CoverageChecks.config.ps1")) {
+    # Dot source the config file to import the variables to this script's session
+    . "$PSScriptRoot\Invoke-CoverageChecks.config.ps1"
+} else {
+    Write-Warning "User defined configuration file not found, using default settings"
+}
 
-# This does not apply for AD info / Domain controller info / DFSR info (yet)
-
-$DefaultFilters = @(
-    [PSCustomObject]@{
-        Category = 'Disks' # The category / heading to filter
-        Type = 'Property' # for defining thresholds of a property to be included in the tables
-        Property = 'PercentFree' # The property name / column header
-        Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
-        Value = 100
-    },
-    [PSCustomObject]@{
-        Category = 'Disks'
-        Type = 'Display' # For defining which properties are shown / how it is sorted
-        Action = 'Include' # Include or Exclude are the only valid options
-        Properties = '*' # A star means ALL properties (no filtering on property names)
-        SortingProperty = 'PercentFree' # Sort by which property name
-        SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
-    },
-    [PSCustomObject]@{
-        Category = 'ExpiredSoonCertificates'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'GeneralInformation'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = '*' # A star * means all properties
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'LocalAdministrators'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = '*'
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'NonStandardScheduledTasks'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
-        SortingProperty = @('ComputerName','Last Run Time')
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'NonStandardServices'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'PendingReboot'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'SharedPrinters'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
-        SortingProperty = 'ComputerName','PrinterName'
-        SortingType = 'Ascending'
-    },
-    [PSCustomObject]@{
-        Category = 'UpdateInfo'
-        Type = 'Display'
-        Action = 'Include'
-        Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
-        SortingProperty = 'ComputerName'
-        SortingType = 'Ascending'
-    }
-)
-
-$VCenters = @()
-
-# DO NOT MODIFY BELOW THIS LINE
+# DO NOT MODIFY THIS FILE
 ########################################################
 
 # Check if verbose flag is set to later dump more info
@@ -173,19 +91,6 @@ $ErrorActionPreference = "Continue"
 if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
 Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log") -Append
 
-# Required modules
-$RequiredModules = @(
-    'ActiveDirectory',
-    'GroupPolicy'
-)
-if ($VCenters.count -gt 0) {$RequiredModules += 'VMWare.PowerCLI'}
-
-Import-Module -Name $RequiredModules -ErrorAction Stop
-
-# Optional modules
-
-Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
-
 # Make sure that the user running script is a domain admin
 # Ensures full access to all servers for full info grab
 # Can replace with another administrator level group if required i.e. ServerAdmins 
@@ -200,6 +105,106 @@ If ($RunningUserGroups -Contains "Domain Admins") {
     Write-Warning "Exiting script..."
     exit
 }
+
+# If the user defined filters are not in place - use the defaults
+if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array')) {
+    $DefaultFilters = @(
+        [PSCustomObject]@{
+            Category = 'Disks' # The category / heading to filter
+            Type = 'Property' # for defining thresholds of a property to be included in the tables
+            Property = 'PercentFree' # The property name / column header
+            Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
+            Value = 100
+        },
+        [PSCustomObject]@{
+            Category = 'Disks'
+            Type = 'Display' # For defining which properties are shown / how it is sorted
+            Action = 'Include' # Include or Exclude are the only valid options
+            Properties = '*' # A star means ALL properties (no filtering on property names)
+            SortingProperty = 'PercentFree' # Sort by which property name
+            SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
+        },
+        [PSCustomObject]@{
+            Category = 'ExpiredSoonCertificates'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'GeneralInformation'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = '*' # A star * means all properties
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'LocalAdministrators'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = '*'
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'NonStandardScheduledTasks'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+            SortingProperty = @('ComputerName','Last Run Time')
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'NonStandardServices'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'PendingReboot'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'SharedPrinters'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
+            SortingProperty = 'ComputerName','PrinterName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'UpdateInfo'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        }
+    )
+}
+
+if ($null -eq $VCentersAndESXIHosts) { $VCentersAndESXIHosts = @() }
+
+# Required modules
+$RequiredModules = @(
+    'ActiveDirectory',
+    'GroupPolicy'
+)
+if ($VCentersAndESXIHosts.count -gt 0) {$RequiredModules += 'VMWare.PowerCLI'}
+
+Import-Module -Name $RequiredModules -ErrorAction Stop
+
+# Optional modules
+
+Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 ########################################################
 # BEGIN DEFINE FUNCTIONS
@@ -750,57 +755,6 @@ function Get-GPOChanges {
     }
 }
 
-function Get-InstalledRoles {
-    <#
-        .SYNOPSIS
-            Gets installed roles
-        
-        .DESCRIPTION
-            Gets installed roles and features
-        
-        .PARAMETER ComputerName
-            The computer to get roles from
-        
-        .EXAMPLE
-            PS C:\> Get-DfsrBacklog -ComputerName DC01
-
-            Get the backlog information from one DC
-        
-        .EXAMPLE
-            PS C:\> Get-InstalledRoles -ComputerName DC01
-
-            Get roles from the machine called DC01
-        
-        .NOTES
-            Updated 2019-03-28 by Andy DLP
-            adelapole@eci.com
-
-        .LINK
-            www.eci.com
-    #>
-    [CmdletBinding(PositionalBinding = $true)]
-    param
-    (
-        [Parameter(Mandatory = $false,
-                    ValueFromPipeline = $true,
-                    ValueFromPipelineByPropertyName = $true,
-                    Position = 0,
-                    HelpMessage = 'The computername from which to check roles')]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$ComputerName = $env:COMPUTERNAME
-    )
-
-    begin {}
-
-    process {
-        foreach ($computer in $ComputerName) {
-            Get-WindowsFeature -ComputerName $computer | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
-        } # foreach computer
-    } # process
-
-    end {}
-}
-
 
 # END DEFINE FUNCTIONS
 ########################################################
@@ -1007,6 +961,7 @@ $ExchangeServerList = @()
 foreach ($Domain in $AllDomainInfo) {
     $ExchangeServerList += (Get-ADObject -Filter {objectCategory -eq "msExchExchangeServer"} -SearchBase "cn=Configuration,$((Get-ADDomain -Identity $Domain.DomainDNSRoot).DistinguishedName)" | Select-Object -ExpandProperty Name)
 }
+<#
 # SERVER CHECKS
 # dns
 # ping
@@ -1033,7 +988,7 @@ foreach ($Domain in $AllDomainInfo) {
 # truncation lag times
 # 
 # 
-
+#>
 
 # END EXCHANGE
 #########################################################
@@ -1073,10 +1028,10 @@ foreach ($Server in $ServerList) {
                 # Run it all locally via an invoked session
                 $ServerSSession = New-PSSession -ComputerName $Server.name -ErrorAction Stop
                 $OutputObjectParams = @{}
-                $InstalledRoles = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-InstalledRoles} -ArgumentList $Server.Name
+                $InstalledRoles = Get-WindowsFeature -ComputerName $Server.name | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
 
-                    $InstalledRoles = Get-WindowsFeature -ComputerName $computer | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
+                    $InstalledRoles = Get-WindowsFeature | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
 
                     # Get some WMI info about the machine
                     $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
@@ -1184,7 +1139,7 @@ foreach ($Server in $ServerList) {
 
                 # Get non SYSVOL DFSR backlogs
                 if ($InstalledRoles -contains 'FS-DFS-Replication') {
-                    $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}
+                    $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}  -ArgumentList $Server.Name
                     $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
                     $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
                 }
@@ -1283,7 +1238,7 @@ foreach ($domain in $AllDomainInfo) {
 $fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
