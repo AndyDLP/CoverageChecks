@@ -39,201 +39,35 @@ Param (
     [ValidateScript( { Test-Path -Path $_ } )]
     [string]$ConfigFile = "$PSScriptRoot\Invoke-CoverageChecks.config.ps1"
 )
-########################################################
-# USER DEFINED VARIABLES ARE NOT HERE
-
-# MODIFY VARIABLES IN THIS CONFIG FILE INSTEAD
-if ($null -ne (Get-Item -Path "$PSScriptRoot\Invoke-CoverageChecks.config.ps1")) {
-    # Dot source the config file to import the variables to this script's session
-    Write-Verbose "Importing user settings from $ConfigFile"
-    . "$ConfigFile"
-} else {
-    Write-Warning "User defined configuration file not found at $ConfigFile, using default settings"
-}
-
-# DO NOT MODIFY THIS FILE
-########################################################
-
-# Check if verbose flag is set to later dump more info
-$IsVerbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
-
-# Get PSScriptRoot on PS 2.0
-if (-not $PSScriptRoot) {
-    $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-}
-
-# Todays date in filename compatible format
-$Today = (Get-Date -Format "dd-MM-yy")
-
-# Stop any current transcript / logging & restart logging to same folder as it's run
-$ErrorActionPreference = "SilentlyContinue"
-Stop-Transcript | Out-Null
-$ErrorActionPreference = "Continue"
-if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
-Start-Transcript -Path (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log") -Append
-
-# Make sure that the user running script is a domain admin
-# Ensures full access to all servers for full info grab
-# Can replace with another administrator level group if required i.e. ServerAdmins 
-$RunningUser = Get-ADUser ($env:USERNAME) -ErrorAction Stop
-Write-Verbose "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-$RunningUserGroups = Get-ADGroup -LDAPFilter ("(member:1.2.840.113556.1.4.1941:={0})" -f ($RunningUser.DistinguishedName)) | Select-Object -ExpandProperty Name
-If ($RunningUserGroups -Contains "Domain Admins") {
-    Write-Verbose "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
-} else {
-    # If user is not a domain admin then stop script
-    Write-Warning "$($env:USERNAME)@$($env:USERDNSDOMAIN) is not a domain admin!"
-    Write-Warning "Exiting script..."
-    exit
-}
-
-# If the user defined filters are not in place - use the defaults
-if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array')) {
-    $DefaultFilters = @(
-        [PSCustomObject]@{
-            Category = 'Disks' # The category / heading to filter
-            Type = 'Property' # for defining thresholds of a property to be included in the tables
-            Property = 'PercentFree' # The property name / column header
-            Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
-            Value = 100
-        },
-        [PSCustomObject]@{
-            Category = 'Disks'
-            Type = 'Display' # For defining which properties are shown / how it is sorted
-            Action = 'Include' # Include or Exclude are the only valid options
-            Properties = '*' # A star means ALL properties (no filtering on property names)
-            SortingProperty = 'PercentFree' # Sort by which property name
-            SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
-        },
-        [PSCustomObject]@{
-            Category = 'ExpiredSoonCertificates'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'GeneralInformation'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*' # A star * means all properties
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'LocalAdministrators'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'NonStandardScheduledTasks'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
-            SortingProperty = @('ComputerName','Last Run Time')
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'NonStandardServices'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'PendingReboot'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'SharedPrinters'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
-            SortingProperty = 'ComputerName','PrinterName'
-            SortingType = 'Ascending'
-        },
-        [PSCustomObject]@{
-            Category = 'UpdateInfo'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        }
-    )
-}
-
-if ($null -eq $IgnoredServers) {
-    # A comma separated list of servers names (strings) that will not be target for information gathering
-    $IgnoredServers = @()
-}
-
-if ($null -eq $SendEmail) {
-    # Change to $true to enable reporting sending via email
-    $SendEmail = $false
-}
-
-# Only define the below if email is enabled
-if ($SendEmail -eq $true) {
-
-    if ($null -eq $TargetEmail) {
-        # A comma separated list of recipients for the email
-        $TargetEmail = @(
-        "recipient1@example.com",
-        "recipient2@example.com"
-        )
-    }
-
-    if ($null -eq $MailServer) {
-        # The SMTP relay that will allow the email
-        $MailServer = "mail.example.com"
-    }
-    
-    if ($null -eq $MailPort) {
-        # Port used for the SMTP relay
-        $MailPort = 25
-    }
-    
-    if ($null -eq $FromEmail) {
-        # The from address for the report email
-        $FromEmail = "ServerChecks@example.com"
-    }
-    
-    if ($null -eq $MailSubject) {
-        # The subject for the report email 
-        $MailSubject = "ECI Coverage Checks - $(Get-Date)"
-    }
-}
-
-if ($null -eq $VCentersAndESXIHosts) {
-    # VCenter servers and ESXI hosts in a comma separated list
-    $VCentersAndESXIHosts = @()
-}
-
-# Required modules
-$RequiredModules = @(
-    'ActiveDirectory',
-    'GroupPolicy'
-)
-if ($VCentersAndESXIHosts.count -gt 0) {$RequiredModules += 'VMWare.PowerCLI'}
-
-Import-Module -Name $RequiredModules -ErrorAction Stop
-
-# Optional modules
-
-Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 ########################################################
 # BEGIN DEFINE FUNCTIONS
+
+function Write-Log {
+    param(
+    [parameter(Mandatory=$true,
+               ValueFromPipeline = $true,
+               Position = 2)]
+    [string]$Text,
+    [parameter(Mandatory=$false,
+               Position = 1)]
+    [ValidateSet('WARNING','ERROR','INFO')]
+    [string]$Type = 'INFO',
+    [parameter(Mandatory=$true,
+               Position = 0)]
+    [ValidateScript( { Test-Path -Path $_ -IsValid } )]
+    [string]$Log
+    )
+
+    begin {}
+
+    process {
+        $logMessage = @((Get-Date).ToString(),'-',$Type,':',$Text) -join ' '
+        Add-Content -Path $log -Value $logMessage
+    }
+
+    end {}
+}
 
 function Get-DfsrBacklog {
 <#
@@ -781,8 +615,252 @@ function Get-GPOChanges {
     }
 }
 
-
 # END DEFINE FUNCTIONS
+########################################################
+
+########################################################
+# BEGIN SETUP VARIABLES
+
+# Check if verbose flag is set to later dump more info
+$IsVerbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+
+# Get PSScriptRoot on PS 2.0
+if (-not $PSScriptRoot) {
+    $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+}
+
+# Todays date in filename compatible format
+$Today = (Get-Date -Format "dd-MM-yy")
+
+if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
+$LogFilePath = (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log")
+
+
+Write-Log -Log $LogFilePath -Type INFO -Text "Computer name: $env:COMPUTERNAME"
+Write-Log -Log $LogFilePath -Type INFO -Text "PSVersion: $($PSVersionTable.PSVersion.ToString())"
+Write-Log -Log $LogFilePath -Type INFO -Text "Today: $Today"
+Write-Log -Log $LogFilePath -Type INFO -Text "PSScriptRoot: $PSScriptRoot"
+Write-Log -Log $LogFilePath -Type INFO -Text "IsVerbose: $IsVerbose"
+Write-Log -Log $LogFilePath -Type INFO -Text "Logging set to: $LogFilePath"
+
+########################################################
+# USER DEFINED VARIABLES ARE NOT HERE
+
+# MODIFY VARIABLES IN THIS CONFIG FILE INSTEAD
+if ($null -ne (Get-Item -Path "$PSScriptRoot\Invoke-CoverageChecks.config.ps1")) {
+    # Dot source the config file to import the variables to this script's session
+    Write-Verbose "Importing user settings from $ConfigFile"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Importing user settings from $ConfigFile"
+    . "$ConfigFile"
+} else {
+    Write-Warning "User defined configuration file not found at $ConfigFile, using default settings"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "User defined configuration file not found at $ConfigFile, using default settings"
+}
+
+# DO NOT MODIFY THIS FILE
+########################################################
+
+# Make sure that the user running script is a domain admin
+# Ensures full access to all servers for full info grab
+# Can replace with another administrator level group if required i.e. ServerAdmins 
+$RunningUser = Get-ADUser ($env:USERNAME) -ErrorAction Stop
+Write-Verbose "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+Write-Log -Log $LogFilePath -Type INFO -Text "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+$RunningUserGroups = Get-ADGroup -LDAPFilter ("(member:1.2.840.113556.1.4.1941:={0})" -f ($RunningUser.DistinguishedName)) | Select-Object -ExpandProperty Name
+If ($RunningUserGroups -Contains "Domain Admins") {
+    Write-Verbose "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
+    Write-Log -Log $LogFilePath -Type INFO -Text "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
+} else {
+    # If user is not a domain admin then stop script
+    Write-Warning "$($env:USERNAME)@$($env:USERDNSDOMAIN) is not a domain admin!"
+    Write-Log -Log $LogFilePath -Type ERROR -Text "$($env:USERNAME)@$($env:USERDNSDOMAIN) is not a domain admin!"
+    Write-Warning "Exiting script..."
+    Write-Log -Log $LogFilePath -Type ERROR -Text "Exiting script..."
+    exit
+}
+
+# If the user defined filters are not in place - use the defaults
+if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array')) {
+    Write-Warning "DefaultFilters variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "DefaultFilters variable not found, using system defaults"
+    $DefaultFilters = @(
+        [PSCustomObject]@{
+            Category = 'Disks' # The category / heading to filter
+            Type = 'Property' # for defining thresholds of a property to be included in the tables
+            Property = 'PercentFree' # The property name / column header
+            Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
+            Value = 100
+        },
+        [PSCustomObject]@{
+            Category = 'Disks'
+            Type = 'Display' # For defining which properties are shown / how it is sorted
+            Action = 'Include' # Include or Exclude are the only valid options
+            Properties = '*' # A star means ALL properties (no filtering on property names)
+            SortingProperty = 'PercentFree' # Sort by which property name
+            SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
+        },
+        [PSCustomObject]@{
+            Category = 'ExpiredSoonCertificates'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'GeneralInformation'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = '*' # A star * means all properties
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'LocalAdministrators'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = '*'
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'NonStandardScheduledTasks'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+            SortingProperty = @('ComputerName','Last Run Time')
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'NonStandardServices'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'PendingReboot'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'SharedPrinters'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
+            SortingProperty = 'ComputerName','PrinterName'
+            SortingType = 'Ascending'
+        },
+        [PSCustomObject]@{
+            Category = 'UpdateInfo'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        }
+    )
+}
+Write-Verbose "$($DefaultFilters.Count) filters loaded"
+Write-Log -Log $LogFilePath -Type INFO -Text "$($DefaultFilters.Count) filters loaded"
+
+if ($null -eq $IgnoredServers) {
+    Write-Warning "IgnoredServers variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "IgnoredServers variable not found, using system defaults"
+    # A comma separated list of servers names (strings) that will not be target for information gathering
+    $IgnoredServers = @()
+}
+Write-Verbose ("Servers ignored: " + $IgnoredServers -join ', ')
+Write-Log -Log $LogFilePath -Type INFO -Text ("Servers ignored: " + $IgnoredServers -join ', ')
+
+if ($null -eq $SendEmail) {
+    Write-Warning "SendEmail variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "SendEmail variable not found, using system defaults"
+    # Change to $true to enable reporting sending via email
+    $SendEmail = $false
+}
+Write-Verbose "Send email enabled: $SendEmail"
+Write-Log -Log $LogFilePath -Type INFO -Text "Send email enabled: $SendEmail"
+
+# Only define the below if email is enabled
+if ($SendEmail -eq $true) {
+
+    if ($null -eq $TargetEmail) {
+        Write-Warning "TargetEmail variable not found, using system defaults"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "TargetEmail variable not found, using system defaults"
+        # A comma separated list of recipients for the email
+        $TargetEmail = @(
+        "recipient1@example.com",
+        "recipient2@example.com"
+        )
+    }
+    Write-Verbose ("Email recipients: " + $TargetEmail -join ', ')
+    Write-Log -Log $LogFilePath -Type INFO -Text ("Email recipients: " + $TargetEmail -join ', ')
+
+    if ($null -eq $MailServer) {
+        Write-Warning "MailServer variable not found, using system defaults"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "MailServer variable not found, using system defaults"
+        # The SMTP relay that will allow the email
+        $MailServer = "mail.example.com"
+    }
+    Write-Verbose "Mail server: $MailServer"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Mail server: $MailServer"
+
+    if ($null -eq $MailPort) {
+        Write-Warning "MailPort variable not found, using system defaults"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "MailPort variable not found, using system defaults"
+        # Port used for the SMTP relay
+        $MailPort = 25
+    }
+    Write-Verbose "Mail port: $MailPort"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Mail port: $MailPort"
+    
+    if ($null -eq $FromEmail) {
+        Write-Warning "FromEmail variable not found, using system defaults"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "FromEmail variable not found, using system defaults"
+        # The from address for the report email
+        $FromEmail = "ServerChecks@example.com"
+    }
+    Write-Verbose "Mail sender: $FromEmail"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Mail sender: $FromEmail"
+    
+    if ($null -eq $MailSubject) {
+        Write-Warning "MailSubject variable not found, using system defaults"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "MailSubject variable not found, using system defaults"
+        # The subject for the report email 
+        $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+    }
+    Write-Verbose "Mail subject: $MailSubject"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Mail subject: $MailSubject"
+}
+
+if ($null -eq $VCentersAndESXIHosts) {
+    Write-Warning "MailSubject variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "MailSubject variable not found, using system defaults"
+    # VCenter servers and ESXI hosts in a comma separated list
+    $VCentersAndESXIHosts = @()
+}
+Write-Verbose ("VMware servers: " + $VCentersAndESXIHosts -join ', ')
+Write-Log -Log $LogFilePath -Type INFO -Text ("VMware servers: " + $VCentersAndESXIHosts -join ', ')
+
+# Required modules
+$RequiredModules = @(
+    'ActiveDirectory',
+    'GroupPolicy'
+)
+if ($VCentersAndESXIHosts.count -gt 0) {$RequiredModules += 'VMWare.PowerCLI'}
+
+Import-Module -Name $RequiredModules -ErrorAction Stop -Verbose:$false
+
+# Optional modules
+
+#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue -Verbose:$false
+
+# END SETUP VARIABLES
 ########################################################
 
 ########################################################
@@ -792,10 +870,17 @@ function Get-GPOChanges {
 
 $ThisForest = Get-ADForest
 
+Write-Verbose "Forest name: $($ThisForest.Name)"
+Write-Log -Log $LogFilePath -Type INFO -Text "Forest name: $($ThisForest.Name)"
+
 $AllDomainInfo = @()
 $AllDomainObjectInfo =@()
 foreach ($Domain in $ThisForest.Domains) {
     $ThisDomain = Get-ADDomain -Identity $Domain
+    
+    Write-Verbose "Domain name: $($Domain.Name)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($Domain.Name)"
+
     $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
     $AllDomainControllersAD = Get-ADObject -Server $ThisDomain.PDCEmulator -Filter {ObjectClass -eq 'computer'} -SearchBase "OU=Domain Controllers,$($ThisDomain.DistinguishedName)"
     $DCRefObj = $AllDomainControllersPS | Select-Object -ExpandProperty ComputerObjectDN
@@ -806,7 +891,7 @@ foreach ($Domain in $ThisForest.Domains) {
         16 {'FRS - 1'}
         32 {'DFSR - 2'}
         48 {'DFSR - 3'}
-        Default {'Unknown'}
+        Default {'Unknown (FRS)'}
      }
     $ADInfoParams = @{
         ForestName = $ThisForest.Name
@@ -824,12 +909,19 @@ foreach ($Domain in $ThisForest.Domains) {
     }
     if ($null -ne $Differences) {
         $ADInfoParams.Add('Notes',"MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)")
+        Write-Warning "MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)"
     } else {
-        # All good / do nothing
+        Write-Verbose "Domain controllers: $($AllDomainControllersPS -join ', ')"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Domain controllers: $($AllDomainControllersPS -join ', ')"
     }
     $ADInfo = [PSCustomObject]$ADInfoParams
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
+    foreach ($Property in $ADInfo.psobject.properties.Name) {
+        Write-Verbose "$($Domain.Name) $($Property): $($ADInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.Name) $($Property): $($ADInfo.$Property)"
+    }
 
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
@@ -860,6 +952,11 @@ foreach ($Domain in $ThisForest.Domains) {
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
+
+    foreach ($Property in $DomainObjectInfo.psobject.properties.Name) {
+        Write-Verbose "$($Domain.Name) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.Name) $($Property): $($DomainObjectInfo.$Property)"
+    }
 } # foreach domain
 
 # DC INFO
@@ -871,7 +968,9 @@ $inc = 0
 foreach ($DC in $AllDomainControllersPS) {
     $inc++
     Write-Verbose "Starting checks on: $($DC.Name)"
-    Write-Verbose "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"# GPO Changes - Only run once
+    Write-Log -Log $LogFilePath -Type INFO -Text "Starting checks on: $($DC.Name)"
+    Write-Verbose "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "DC: $($DC.Name) --- $inc / $($AllDomainControllersPS.count)"
 
     # Find if PC is ON and responding to WinRM
     $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
@@ -885,9 +984,13 @@ foreach ($DC in $AllDomainControllersPS) {
     if (($ServerResponding -eq $true) -and ($ServerWSManrunning -eq $true)) {
         # Server responding fine
         try {
-            $DCPSSession = New-PSSession -ComputerName $DC.name
             # Invoke it all, don't rely on the inbuilt remoting of Get-WmiObject or other cmdlets
+            Write-Verbose "Creating PSSession to: $($DC.Name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Creating PSSession to: $($DC.Name)"
+            $DCPSSession = New-PSSession -ComputerName $DC.name -ErrorAction Stop
+
             Write-Verbose "Gathering DC info from: $($DC.Name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Gathering DC info from: $($DC.Name)"
             $OutputObjectParams = Invoke-Command -Session $DCPSSession -HideComputerName -ScriptBlock {
                 $OSInfo = Get-WmiObject -Class 'win32_operatingsystem'
                 $PCInfo = Get-WmiObject -Class 'win32_computersystem'
@@ -939,10 +1042,18 @@ foreach ($DC in $AllDomainControllersPS) {
             $DCResponse = $DCResponse | Select-Object -Property ComputerName,NTDSService,NETLOGONService,DNSService,NetlogonAccessible,SYSVOLAccessible,"ADDS volume % free","ADDS log volume % free","SYSVOL volume % free",IsVirtual,IsGC,IsServerCore,OS,LastBoot
             $AllDCInfo = $AllDCInfo + $DCResponse
 
+            foreach ($Property in $DCResponse.psobject.properties.Name) {
+                Write-Verbose "$($DC.Name) $($Property): $($DCResponse.$Property)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "$($DC.Name) $($Property): $($DCResponse.$Property)"
+            }
+
+            Write-Verbose "Removing PSSession to: $($DC.Name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Removing PSSession to: $($DC.Name)"
             Remove-PSSession -Session $DCPSSession
         } # try
         catch {
-            Write-Verbose "$($DC.Name) failed"
+            Write-Warning "$($DC.Name) failed"
+            Write-Log -Log $LogFilePath -Type WARNING -Text "$($DC.Name) failed"
             $FailObject = [PSCustomObject]@{
                 ComputerName = $DC.HostName
                 DC = $DC
@@ -952,7 +1063,8 @@ foreach ($DC in $AllDomainControllersPS) {
             $FailedDCInfo = $FailedDCInfo + $FailObject
         } # catch
     } else {
-        Write-Verbose "$($DC.Name) failed"
+        Write-Warning "$($DC.Name) failed"
+        Write-Log -Log $LogFilePath -Type WARNING -Text "$($DC.Name) failed"
         $FailObject = [PSCustomObject]@{
             ComputerName = $DC.HostName
             DC = $DC
@@ -963,20 +1075,6 @@ foreach ($DC in $AllDomainControllersPS) {
     } # else server not responding fine
 } # foreach DC
 
-
-if ($IsVerbose) {
-    Write-Verbose "Domain Info:"
-    $AllDomainInfo | Format-List *
-    Write-Verbose "DC Info:"
-    $AllDCInfo  |  Format-List *
-    Write-Verbose "DFSR Backlogs"
-    $AllDCBacklogs | Format-List *
-    Write-Verbose "Failed DC info"
-    $FailedDCInfo | Format-List *
-    Write-Verbose "All domain object infos"
-    $AllDomainObjectInfo | Format-List *
-}
-
 # END AD INFORMATION
 #########################################################
 
@@ -985,8 +1083,14 @@ if ($IsVerbose) {
 
 $ExchangeServerList = @()
 foreach ($Domain in $AllDomainInfo) {
+    Write-Verbose "Getting exchange servers in: $($Domain.DomainDNSRoot)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Getting exchange servers in: $($Domain.DomainDNSRoot)"
     $ExchangeServerList += (Get-ADObject -Filter {objectCategory -eq "msExchExchangeServer"} -SearchBase "cn=Configuration,$((Get-ADDomain -Identity $Domain.DomainDNSRoot).DistinguishedName)" | Select-Object -ExpandProperty Name)
+    
+    Write-Verbose "Exchange servers in $($Domain.DomainDNSRoot): $($ExchangeServerList -join ', ')"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Exchange servers in $($Domain.DomainDNSRoot): $($ExchangeServerList -join ', ')"
 }
+
 <#
 # SERVER CHECKS
 # dns
@@ -1023,8 +1127,15 @@ foreach ($Domain in $AllDomainInfo) {
 # BEGIN MAIN INFO GATHERING LOOP
 
 # Get all Windows servers with all properties
-Write-Verbose "Searching for windows servers in domain: $CurrentDomainName"
-$ServerList = Get-ADComputer -Filter { (OperatingSystem -Like "Windows *Server*") } -Properties *
+$ServerList = @()
+foreach ($Domain in $AllDomainInfo) {
+    Write-Verbose "Searching for windows servers in domain: $($Domain.DomainDNSRoot)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Searching for windows servers in domain: $($Domain.DomainDNSRoot)"
+    $ServerList += (Get-ADComputer -Filter { (OperatingSystem -Like "Windows *Server*") } -Properties *)
+}
+Write-Verbose "All domains server list: $($ServerList -join ', ')"
+Write-Log -Log $LogFilePath -Type INFO -Text "All domains server list: $($ServerList -join ', ')"
+
 
 # incremental counter
 $inc = 0
@@ -1034,10 +1145,12 @@ $FailedServers = @()
 foreach ($Server in $ServerList) {
     $inc++
     Write-Verbose "Server: $($Server.Name) --- $inc / $($ServerList.count)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Server: $($Server.Name) --- $inc / $($ServerList.count)"
 
     if ($IgnoredServers -notcontains $Server.Name) {
         # Server is not filtered
         Write-Verbose "Starting checks on: $($Server.Name)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Starting checks on: $($Server.Name)"
 
         # Find if PC is ON and responding to WinRM
         $ServerResponding = Test-Connection -Count 2 -ComputerName $Server.Name -Quiet
@@ -1052,9 +1165,13 @@ foreach ($Server in $ServerList) {
             # Server responding fine
             try {
                 # Run it all locally via an invoked session
+                Write-Verbose "Creating PSSession to $($Server.Name)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Creating PSSession to $($Server.Name)"
                 $ServerSSession = New-PSSession -ComputerName $Server.name -ErrorAction Stop
                 $OutputObjectParams = @{}
                 $InstalledRoles = Get-WindowsFeature -ComputerName $Server.name | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
+                Write-Verbose "$($Server.Name) installed roles: $($InstalledRoles -join ', ')"
+                Write-Log -Log $LogFilePath -Type INFO -Text "$($Server.Name) installed roles: $($InstalledRoles -join ', ')"
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
 
                     $InstalledRoles = Get-WindowsFeature | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
@@ -1182,10 +1299,19 @@ foreach ($Server in $ServerList) {
                 $ServerObject = [PSCustomObject]$OutputObjectParams
                 $AllServerInfo = $AllServerInfo + $ServerObject
 
+                
+                foreach ($Property in $ServerObject.psobject.properties.Name) {
+                    Write-Verbose "$($Server.Name) $($Property): $($ServerObject.$Property)"
+                    Write-Log -Log $LogFilePath -Type INFO -Text "$($Server.Name) $($Property): $($ServerObject.$Property)"
+                }
+
+                Write-Verbose "Removing PSSession to $($Server.Name)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Removing PSSession to $($Server.Name)"
                 Remove-PSSession -Session $ServerSSession
             }
             catch {
                 Write-Warning "Failed to gather information from server: $($server.Name)"
+                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to gather information from server: $($server.Name)"
                 $FailObject = [PSCustomObject]@{
                     ComputerName = $Server.Name
                     Server = $Server
@@ -1198,6 +1324,7 @@ foreach ($Server in $ServerList) {
             }
         } else {
             Write-Warning "Failed to gather information from server: $($server.Name)"
+            Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to gather information from server: $($server.Name)"
             $FailObject = [PSCustomObject]@{
                 ComputerName = $Server.Name
                 Server = $Server
@@ -1210,6 +1337,7 @@ foreach ($Server in $ServerList) {
         } # else server not responding fine
     } else {
         Write-Verbose "Ignored server: $($Server.Name)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Ignored server: $($Server.Name)"
         $FailObject = [PSCustomObject]@{
             ComputerName = $Server.Name
             Server = $Server
@@ -1222,12 +1350,6 @@ foreach ($Server in $ServerList) {
     } # else ignored
 } # main foreach
 
-if ($IsVerbose) {
-    Write-Verbose 'Domain Info:'
-    $AllServerInfo | Format-List *
-    Write-Verbose 'Failed servers:'
-    $FailedServers | Format-List *
-}
 
 # END MAIN INFO GATHERING LOOP
 ##########################################################
@@ -1350,6 +1472,7 @@ if ($IsVerbose) {
 }
 
 # Output to PDF?
+# would require an additional .exe though.....
 # https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 
 if ($SendEmail) {
@@ -1358,10 +1481,3 @@ if ($SendEmail) {
 
 # END OUTPUT
 ##########################################################
-
-
-##########################################################
-# CLEAN UP
-
-# Stop script logging
-Stop-Transcript | Out-Null
