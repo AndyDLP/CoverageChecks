@@ -29,9 +29,6 @@
     .NOTES
         Andrew de la Pole - 2019
         Version 0.7.0
-	
-    .LINK
-        www.eci.com
 #>
 [CmdletBinding()]
 Param (
@@ -94,10 +91,6 @@ function Get-DfsrBacklog {
     .NOTES
         Original from the internet (unsure of exact source)
         Updated 2019-03-20 by Andy DLP
-        adelapole@eci.com
-
-    .LINK
-        www.eci.com
 #>
     
     [CmdletBinding(PositionalBinding = $true)]
