@@ -1401,11 +1401,14 @@ foreach ($ServerInfo in $AllServerInfo) {
 }
 $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
 Write-Verbose ($UniqueProperties | Out-String)
+Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
     $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
     # Filter the data as described in the filters defined above
     foreach ($filter in $MatchingFilters) {
+        Write-Verbose "Filter: $($filter | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
         switch ($filter.type) {
             'Property' { 
                 if ($filter.value -is [array]) {
@@ -1424,6 +1427,7 @@ foreach ($Property in $UniqueProperties) {
                     $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
                 } else {
                     Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
                 }
                 $SortSplat = @{
                     Property = $Filter.SortingProperty
@@ -1434,6 +1438,7 @@ foreach ($Property in $UniqueProperties) {
                     $SortSplat.Add('Descending',$true)
                 } else {
                     Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
                 }
                 $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
              }
@@ -1443,13 +1448,16 @@ foreach ($Property in $UniqueProperties) {
             Default {
                 # Filter nothing
                 Write-Warning "Failed to filter with wrong type $($Filter.Type)"
+                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
             }
         } # switch filter type
     }# foreach filter
     if ($null -ne $info) {
         Write-Verbose ($info | Out-String)
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property info: $($info | Out-String)"
         $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
         Write-Verbose ($frag | Out-String)
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property HTML fragment: $($frag | Out-String)"
         $fragments = $fragments + $frag
     }
 }
@@ -1459,6 +1467,8 @@ $fragments = $fragments + "</div>"
 $OutputHTMLFile = ConvertTo-Html -Body ($fragments -join '') -Head $CSSHeaders
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Reports" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Reports" | Out-Null }
 $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" -Encoding ascii -Force
+Write-Verbose "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
+Write-Log -Log $LogFilePath -Type INFO -Text "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 
 if ($IsVerbose) {
     Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
@@ -1469,8 +1479,13 @@ if ($IsVerbose) {
 # https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 
 if ($SendEmail) {
+    Write-Verbose "Sending email to: $($TargetEmail -join ', ')"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Sending email to: $($TargetEmail -join ', ')"
     Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
 }
 
 # END OUTPUT
 ##########################################################
+
+Write-Verbose "END OF SCRIPT - $(Get-Date)"
+Write-Log -Log $LogFilePath -Type INFO -Text "END OF SCRIPT - $(Get-Date)"
