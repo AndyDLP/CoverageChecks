@@ -1403,6 +1403,7 @@ $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
 Write-Verbose ($UniqueProperties | Out-String)
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
+    $Frag = $null
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
     $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
     # Filter the data as described in the filters defined above
@@ -1418,7 +1419,7 @@ foreach ($Property in $UniqueProperties) {
                 }
                 $FilterScript = [Scriptblock]::Create($str)
                 $info = $info | Where-Object $FilterScript -ErrorAction Continue
-             }
+            }
             'Display' { 
                 $SelectSplat = @{}
                 if ($Filter.Action -eq 'Include') {
@@ -1441,10 +1442,13 @@ foreach ($Property in $UniqueProperties) {
                     Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
                 }
                 $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
-             }
+            }
+            'Colour' { 
+                # do nothing here?
+            }
             'Hidden' { 
                 $info = $null
-             }
+            }
             Default {
                 # Filter nothing
                 Write-Warning "Failed to filter with wrong type $($Filter.Type)"
@@ -1455,12 +1459,34 @@ foreach ($Property in $UniqueProperties) {
     if ($null -ne $info) {
         Write-Verbose ($info | Out-String)
         Write-Log -Log $LogFilePath -Type INFO -Text "Property info: $($info | Out-String)"
-        $frag =  ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+
+        # todo
+        # do some debugging with breakpoints
+
+
+        [xml]$frag = ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+        [array]$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
+        foreach ($filter in $ColourFilters) {
+            for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Property)
+                $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
+                $str = 'if ($frag.table.tr[$i].td[$ColumnHeader] ' + "$($filter.comparison) $FilterValue)" + '{
+                  $class = $frag.CreateAttribute("class")
+                  $class.value = "alert"
+                  $frag.table.tr[$i].attributes.append($class) | Out-Null
+                }'
+                $ColourCode = [Scriptblock]::Create($str)
+                # dot source the scriptblock rather than call (&) to keep it in current scope
+                . $ColourCode
+            }
+        } # foreach colour
+
         Write-Verbose ($frag | Out-String)
         Write-Log -Log $LogFilePath -Type INFO -Text "Property HTML fragment: $($frag | Out-String)"
-        $fragments = $fragments + $frag
+
+        $fragments = $fragments + $frag.InnerXml
     }
-}
+} # foreach property
 $fragments = $fragments + "</div>"
 
 # Build HTML file

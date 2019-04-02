@@ -69,6 +69,10 @@ p {
 	margin-left: 20px;
 	font-size: 12px;
 }
+
+.alert {
+	color: red; 
+	}
  
 table.list{ float: left; }
  
