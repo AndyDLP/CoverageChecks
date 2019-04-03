@@ -119,8 +119,15 @@ $VCentersAndESXIHosts = @()
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
 $IgnoredServers = @(
-    "Server1",
-    "Server2"
+    'HV-01',
+    'JENKINS',
+    'PSTEST',
+    'SCCM-01',
+    'PASSWORDSTATE',
+    'SCVMM',
+    'GLR-WIN1',
+    'SQL-01',
+    'SRV1'
 )
 
 # Change to $true to enable reporting sending via email

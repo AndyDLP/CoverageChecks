@@ -673,7 +673,7 @@ If ($RunningUserGroups -Contains "Domain Admins") {
 }
 
 # If the user defined filters are not in place - use the defaults
-if ($null -eq $DefaultFilters -or ($DefaultFilters.GetType().BaseName -ne 'Array')) {
+if ($null -eq $DefaultFilters) {
     Write-Warning "DefaultFilters variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "DefaultFilters variable not found, using system defaults"
     $DefaultFilters = @(
@@ -1457,36 +1457,44 @@ foreach ($Property in $UniqueProperties) {
         } # switch filter type
     }# foreach filter
     if ($null -ne $info) {
-        Write-Verbose ($info | Out-String)
+        Write-Verbose "Property info: $($info | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property info: $($info | Out-String)"
-
-        # todo
-        # do some debugging with breakpoints
-
-        $frag = $null
-        [xml]$frag = ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
+        [string]$stringOut = $info | ConvertTo-Html -Fragment
+        [xml]$frag = $stringOut
+        Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
         [array]$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
         foreach ($filter in $ColourFilters) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Property)
+                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+                Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+
+                # VERBOSE: Column header: -1 - Disks - ComputerName, Volume, TotalSize, FreeSpace, PercentFree, , 
+
+                Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
+                $var2 = $false
                 $str = 'if ($frag.table.tr[$i].td[$ColumnHeader] ' + "$($filter.comparison) $FilterValue)" + '{
-                  $class = $frag.CreateAttribute("class")
-                  $class.value = "alert"
-                  $frag.table.tr[$i].attributes.append($class) | Out-Null
+                    $class = $frag.CreateAttribute("class")
+                    Write-Verbose $Class
+                    $class.value = "alert"
+                    Write-Verbose $Class
+                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                    Write-Verbose $frag.table.tr[$i]
+                    $Var2 = $true
                 }'
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
-                Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+                . $ColourCode
+                # it's not running
+                Write-Verbose $var2
+                Write-Verbose ($frag.table.tr[$i].childnodes[$ColumnHeader].attributes | Out-String)
             } # for every row in HTML table
         } # foreach colour
 
-        Write-Verbose ($frag.InnerXml | Out-String)
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property HTML fragment: $($frag.InnerXml | Out-String)"
-
-        $fragments = $fragments + $frag.InnerXml
-    }
+        $fragments = $fragments + ("<H2>$Property</H2>" + $frag.InnerXml)
+    } # not null info
 } # foreach property
 $fragments = $fragments + "</div>"
 
