@@ -1463,7 +1463,7 @@ foreach ($Property in $UniqueProperties) {
         # todo
         # do some debugging with breakpoints
 
-
+        $frag = $null
         [xml]$frag = ($info | ConvertTo-Html -Fragment -PreContent "<H2>$Property</H2>")
         [array]$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
         foreach ($filter in $ColourFilters) {
@@ -1475,14 +1475,15 @@ foreach ($Property in $UniqueProperties) {
                   $class.value = "alert"
                   $frag.table.tr[$i].attributes.append($class) | Out-Null
                 }'
+                Write-Verbose "Code string: $str"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
-                # dot source the scriptblock rather than call (&) to keep it in current scope
-                . $ColourCode
+                Invoke-Command -ScriptBlock $ColourCode -NoNewScope
             }
         } # foreach colour
 
-        Write-Verbose ($frag | Out-String)
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property HTML fragment: $($frag | Out-String)"
+        Write-Verbose ($frag.InnerXml | Out-String)
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property HTML fragment: $($frag.InnerXml | Out-String)"
 
         $fragments = $fragments + $frag.InnerXml
     }
