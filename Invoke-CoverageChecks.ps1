@@ -1479,7 +1479,7 @@ foreach ($Property in $UniqueProperties) {
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
                 Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-            }
+            } # for every row in HTML table
         } # foreach colour
 
         Write-Verbose ($frag.InnerXml | Out-String)
