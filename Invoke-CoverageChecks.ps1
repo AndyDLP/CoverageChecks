@@ -1468,31 +1468,20 @@ foreach ($Property in $UniqueProperties) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
                 $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
                 Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
-
-                # VERBOSE: Column header: -1 - Disks - ComputerName, Volume, TotalSize, FreeSpace, PercentFree, , 
-
                 Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
-                $var2 = $false
-                $str = 'if ($frag.table.tr[$i].td[$ColumnHeader] ' + "$($filter.comparison) $FilterValue)" + '{
-                    $class = $frag.CreateAttribute("class")
-                    Write-Verbose $Class
-                    $class.value = "alert"
-                    Write-Verbose $Class
-                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-                    Write-Verbose $frag.table.tr[$i]
-                    $Var2 = $true
-                }'
+                $str = 'if ($frag.table.tr[$i].td[$ColumnHeader] ' + "$($filter.comparison) $FilterValue)" + '{ $true } else { $false }'
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
-                . $ColourCode
-                # it's not running
-                Write-Verbose $var2
-                Write-Verbose ($frag.table.tr[$i].childnodes[$ColumnHeader].attributes | Out-String)
+                $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+                if ($Return -eq $true) {
+                    $class = $frag.CreateAttribute("class")
+                    $class.value = "alert"
+                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                }
             } # for every row in HTML table
         } # foreach colour
-
         $fragments = $fragments + ("<H2>$Property</H2>" + $frag.InnerXml)
     } # not null info
 } # foreach property
