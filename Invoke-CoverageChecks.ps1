@@ -871,8 +871,8 @@ $AllDomainObjectInfo =@()
 foreach ($Domain in $ThisForest.Domains) {
     $ThisDomain = Get-ADDomain -Identity $Domain
     
-    Write-Verbose "Domain name: $($Domain.Name)"
-    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($Domain.Name)"
+    Write-Verbose "Domain name: $($Domain.DNSRoot)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($Domain.DNSRoot)"
 
     $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
     $AllDomainControllersAD = Get-ADObject -Server $ThisDomain.PDCEmulator -Filter {ObjectClass -eq 'computer'} -SearchBase "OU=Domain Controllers,$($ThisDomain.DistinguishedName)"
@@ -919,11 +919,11 @@ foreach ($Domain in $ThisForest.Domains) {
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
     $str = @()
-    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
-    if ($null -ne $GPOChanges) { 
-        $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
-        $GPOChanges = $str -join ', '
-    }
+    #$GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
+    #if ($null -ne $GPOChanges) { 
+    #    $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
+    #    $GPOChanges = $str -join ', '
+    #}
 
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
@@ -941,7 +941,7 @@ foreach ($Domain in $ThisForest.Domains) {
         OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs -join ', ') } else { 'None - ALL OK' }
         UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW -join ', ') } else { 'None - ALL OK' }
         UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
-        GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
+        #GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
@@ -1457,12 +1457,12 @@ foreach ($Property in $UniqueProperties) {
         } # switch filter type
     }# foreach filter
     if ($null -ne $info) {
-        Write-Verbose "Property info: $($info | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property info: $($info | Out-String)"
+        Write-Verbose "Property info for $Property`: $($info | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property info for $Property`: $($info | Out-String)"
         [string]$stringOut = $info | ConvertTo-Html -Fragment
         [xml]$frag = $stringOut
-        Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+        Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
         $ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
         foreach ($filter in $ColourFilters) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
@@ -1470,15 +1470,22 @@ foreach ($Property in $UniqueProperties) {
                 Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
-                $str = 'if ($frag.table.tr[$i].td[$ColumnHeader] ' + "$($filter.comparison) $FilterValue)" + '{ $true } else { $false }'
+                Write-Verbose ($frag.table.tr[$i].td[$ColumnHeader]).GetType()
+                Write-Verbose "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
+                $str = 'if (' + $FilterValue + " $($filter.comparison) " + '$frag.table.tr[$i].td[$ColumnHeader]){ $true } else { $false }'
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
                 $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-                if ($Return -eq $true) {
+                Write-Verbose "Code return value: $Return"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
+                if ($Return -eq $false) {
                     $class = $frag.CreateAttribute("class")
                     $class.value = "alert"
                     $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                    Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
+                    Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                 }
             } # for every row in HTML table
         } # foreach colour
