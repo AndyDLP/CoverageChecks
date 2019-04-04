@@ -1463,7 +1463,7 @@ foreach ($Property in $UniqueProperties) {
         [xml]$frag = $stringOut
         Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
-        [array]$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
+        $ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
         foreach ($filter in $ColourFilters) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
                 $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
