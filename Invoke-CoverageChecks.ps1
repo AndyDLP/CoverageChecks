@@ -1276,7 +1276,7 @@ foreach ($Server in $ServerList) {
                 # Get non SYSVOL DFSR backlogs
                 if ($InstalledRoles -contains 'FS-DFS-Replication') {
                     $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}  -ArgumentList $Server.Name
-                    $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
+                    $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' }
                     $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
                 }
 
@@ -1350,7 +1350,103 @@ foreach ($Server in $ServerList) {
 ##########################################################
 # BEGIN OUTPUT
 
-$CSSHeaders = Get-Content -Path (Join-Path -Path $PSScriptRoot -ChildPath 'Data\headers.css') -Raw
+$CSSHeaders = @"
+<style type="text/css">
+body {
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+  	margin: auto;
+	max-width: 85%;
+}
+
+ 
+table {
+	border-collapse: collapse;
+	border: 1px black solid;
+	font: 10pt Verdana, Geneva, Arial, Helvetica, sans-serif;
+	color: black;
+	margin-bottom: 10px;
+	box-shadow: 10px 10px 5px #888;
+}
+ 
+table td {
+	color: #000;
+	font-size: 12px;
+	padding-left: 0px;
+	padding-right: 20px;
+	text-align: left;
+}
+ 
+table th {
+	color: #fff;
+	background: #276dab;
+	font-size: 12px;
+	font-weight: bold;
+	padding-left: 0px;
+	padding-right: 20px;
+	text-align: left;
+}
+
+
+h1 {
+	text-align: center;
+	clear: both; font-size: 130%;
+	color:#354B5E;
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+h2 {
+	clear: both; font-size: 115%;
+	color:#354B5E;
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+h3 {
+	clear: both;
+	font-size: 100%;
+	margin-left: 20px;
+	margin-top: 30px;
+	color:#475F77;
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+h4 {
+	clear: both;
+	font-size: 75%;
+	margin-left: 20px;
+	margin-top: 30px;
+	color:#475F77;
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+}
+
+p {
+	margin-left: 20px;
+	font-size: 12px;
+}
+
+.alert {
+	color: red; 
+	}
+ 
+table.list{ float: left; }
+ 
+table.list td:nth-child(1) {
+	font-weight: bold;
+	border-right: 1px grey solid;
+	text-align: right;
+}
+ 
+table.list td:nth-child(2) { padding-left: 7px; }
+table tr:nth-child(even) td:nth-child(even) { background: #ececec; }
+table tr:nth-child(odd) td:nth-child(odd) { background: #c8c8c8; }
+table tr:nth-child(even) td:nth-child(odd) { background: #ececec; }
+table tr:nth-child(odd) td:nth-child(even) { background: #c8c8c8; }
+div.column { width: 320px; float: left; }
+div.first{ padding-right: 20px; border-right: 3px grey solid; }
+div.second{ margin-left: 30px; }
+table{ margin-left: 20px; }
+
+</style>
+"@
 $fragments = @()
 $fragments = $fragments + "<H1>ECI Coverage Report - $(Get-Date)</H1>"
 
@@ -1483,12 +1579,7 @@ foreach ($Property in $UniqueProperties) {
                 if ($Return -eq $false) {
                     $class = $frag.CreateAttribute("class")
                     $class.value = "alert"
-                    if ($Filter.Row -eq $true) {
-                        $frag.table.tr[$i].attributes.append($class) | Out-Null
-                    } else {
-                        $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-                    }
-                    
+                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
                     Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                     Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                 }

@@ -33,12 +33,47 @@ $DefaultFilters = @(
         Value = 100 # only show disks at 100% of less free space (example)
     },
     @{
+        Category = 'DFSRBacklogs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
         Category = 'Disks'
         Type = 'Colour'
-        Value = 50
-        Comparison = '-lt'
         Property = 'PercentFree'
-        Row = $false
+        Comparison = '-lt'
+        Value = 30
+    },
+    @{
+        Category = 'GeneralInformation'
+        Type = 'Colour'
+        Property = 'LastBootUpTime'
+        Comparison = '-gt'
+        Value = (Get-Date).AddDays(-2)
+    },
+    @{
+        Category = 'NonStandardServices'
+        Type = 'Colour'
+        Property = 'State'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'PendingReboot'
+        Type = 'Colour'
+        Property = 'RebootPending'
+        Comparison = '-eq'
+        Value = 'True'
+    },
+    @{
+        Category = 'UpdateInfo'
+        Type = 'Colour'
+        Property = 'LastInstall'
+        Comparison = '-lt'
+        Value = (Get-Date).AddMonths(-3)
     },
     @{
         Category = 'Disks'
