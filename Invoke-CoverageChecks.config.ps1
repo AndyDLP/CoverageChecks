@@ -35,9 +35,10 @@ $DefaultFilters = @(
     @{
         Category = 'Disks'
         Type = 'Colour'
-        Property = 'PercentFree'
-        Comparison = '-lt'
         Value = 50
+        Comparison = '-lt'
+        Property = 'PercentFree'
+        Row = $false
     },
     @{
         Category = 'Disks'

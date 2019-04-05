@@ -71,7 +71,8 @@ p {
 }
 
 .alert {
-	color: red; 
+	color: black;
+	background: red;
 	}
  
 table.list{ float: left; }

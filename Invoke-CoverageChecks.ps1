@@ -1483,7 +1483,12 @@ foreach ($Property in $UniqueProperties) {
                 if ($Return -eq $false) {
                     $class = $frag.CreateAttribute("class")
                     $class.value = "alert"
-                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                    if ($Filter.Row -eq $true) {
+                        $frag.table.tr[$i].attributes.append($class) | Out-Null
+                    } else {
+                        $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                    }
+                    
                     Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                     Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                 }
