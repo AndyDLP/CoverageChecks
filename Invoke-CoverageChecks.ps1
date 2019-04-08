@@ -24,11 +24,11 @@
         Which address to show as FROM. Only active if SendEmail is also used
 
 	.EXAMPLE
-		PS C:\> .\RunMe.ps1 
+		PS C:\> .\Invoke-CoverageChecks.ps1  -Verbose
 	
     .NOTES
         Andrew de la Pole - 2019
-        Version 0.7.0
+        Version 0.8.0
 #>
 [CmdletBinding()]
 Param (
