@@ -608,6 +608,8 @@ function Get-GPOChanges {
     }
 }
 
+
+
 # END DEFINE FUNCTIONS
 ########################################################
 
@@ -995,7 +997,7 @@ foreach ($DC in $AllDomainControllersPS) {
                 $OutputObjectParams = @{
                     ComputerName = $env:COMPUTERNAME
                     OS = $OSInfo.Caption
-                    LastBoot = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
+                    LastBoot = Get-Date -Date ($OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)) -Format 'MM/dd/yyyy HH:mm:ss'
                     IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                     IsGC = $args[0].IsGlobalCatalog
                     NTDSService = (Get-Service -Name 'NTDS').Status
@@ -1184,8 +1186,8 @@ foreach ($Server in $ServerList) {
                         IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                         IsServerCore = if ((Get-Item 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion' | Get-ItemProperty).InstallationType -eq 'Server Core') { $true } else { $false }
                         SMB1Enabled = if ($InstalledRoles -contains 'FS-SMB1') { $true } else { $false }
-                        InstallDate = $OSInfo.ConvertToDateTime($OSInfo.InstallDate)
-                        LastBootUpTime = $OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)
+                        InstallDate = Get-Date -Date ($OSInfo.ConvertToDateTime($OSInfo.InstallDate)) -Format 'MM/dd/yyyy HH:mm:ss'
+                        LastBootUpTime = Get-Date -Date ($OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)) -Format 'MM/dd/yyyy HH:mm:ss'
                         CPUs = ($CPUInfo | Select-Object -ExpandProperty NumberOfLogicalProcessors | Measure-Object -Sum).Sum
                         MemoryGB = [math]::Round(($PCInfo.TotalPhysicalMemory / 1GB))
                     }
@@ -1424,7 +1426,8 @@ p {
 }
 
 .alert {
-	color: red; 
+	color: red;
+	font-weight: bold;
 	}
  
 table.list{ float: left; }

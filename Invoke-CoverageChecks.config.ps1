@@ -30,7 +30,7 @@ $DefaultFilters = @(
         Type = 'Property'
         Property = 'PercentFree'
         Comparison = '-lt'
-        Value = 100 # only show disks at 100% of less free space (example)
+        Value = '100' # only show disks at 100% of less free space (example)
     },
     @{
         Category = 'DFSRBacklogs'
@@ -45,35 +45,35 @@ $DefaultFilters = @(
         Type = 'Colour'
         Property = 'PercentFree'
         Comparison = '-lt'
-        Value = 30
+        Value = '30'
     },
     @{
         Category = 'GeneralInformation'
         Type = 'Colour'
         Property = 'LastBootUpTime'
         Comparison = '-gt'
-        Value = (Get-Date).AddDays(-2)
+        Value = '(Get-Date).AddDays(-2)'
     },
     @{
         Category = 'NonStandardServices'
         Type = 'Colour'
         Property = 'State'
         Comparison = '-eq'
-        Value = 'Stopped'
+        Value = "'Stopped'"
     },
     @{
         Category = 'PendingReboot'
         Type = 'Colour'
         Property = 'RebootPending'
         Comparison = '-eq'
-        Value = 'True'
+        Value = "'True'"
     },
     @{
         Category = 'UpdateInfo'
         Type = 'Colour'
         Property = 'LastInstall'
         Comparison = '-lt'
-        Value = (Get-Date).AddMonths(-3)
+        Value = '(Get-Date).AddMonths(-3)'
     },
     @{
         Category = 'Disks'
