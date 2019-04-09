@@ -700,7 +700,7 @@ if ($null -eq $DefaultFilters) {
             Type = 'Colour'
             Property = 'LastBootUpTime'
             Comparison = '-gt'
-            Value = "'((Get-Date).AddDays(-2))'"
+            Value = '"((Get-Date).AddDays(-2))"'
         },
         @{
             Category = 'NonStandardServices'
