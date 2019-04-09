@@ -679,22 +679,69 @@ if ($null -eq $DefaultFilters) {
     Write-Warning "DefaultFilters variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "DefaultFilters variable not found, using system defaults"
     $DefaultFilters = @(
-        [PSCustomObject]@{
-            Category = 'Disks' # The category / heading to filter
-            Type = 'Property' # for defining thresholds of a property to be included in the tables
-            Property = 'PercentFree' # The property name / column header
-            Comparison = '-lt' # less than - See https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
-            Value = 100
-        },
-        [PSCustomObject]@{
+        @{
             Category = 'Disks'
-            Type = 'Display' # For defining which properties are shown / how it is sorted
-            Action = 'Include' # Include or Exclude are the only valid options
-            Properties = '*' # A star means ALL properties (no filtering on property names)
-            SortingProperty = 'PercentFree' # Sort by which property name
-            SortingType = 'Ascending' # Ascending / Descending are the only valid options (Asc = smallest to largest)
+            Type = 'Property'
+            Property = 'PercentFree'
+            Comparison = '-lt'
+            Value = '100' # only show disks at 100% of less free space (example)
         },
-        [PSCustomObject]@{
+
+        
+        @{
+            Category = 'Disks'
+            Type = 'Colour'
+            Property = 'PercentFree'
+            Comparison = '-lt'
+            Value = '30'
+        },
+        @{
+            Category = 'GeneralInformation'
+            Type = 'Colour'
+            Property = 'LastBootUpTime'
+            Comparison = '-gt'
+            Value = "'((Get-Date).AddDays(-2))'"
+        },
+        @{
+            Category = 'NonStandardServices'
+            Type = 'Colour'
+            Property = 'State'
+            Comparison = '-eq'
+            Value = "'Stopped'"
+        },
+        @{
+            Category = 'PendingReboot'
+            Type = 'Colour'
+            Property = 'RebootPending'
+            Comparison = '-eq'
+            Value = "'$True'"
+        },
+        @{
+            Category = 'UpdateInfo'
+            Type = 'Colour'
+            Property = 'LastInstall'
+            Comparison = '-lt'
+            Value = "'((Get-Date).AddMonths(-3))'"
+        },
+
+
+        @{
+            Category = 'DFSRBacklogs'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
+            SortingProperty = 'ComputerName'
+            SortingType = 'Ascending'
+        },
+        @{
+            Category = 'Disks'
+            Type = 'Display'
+            Action = 'Include'
+            Properties = '*'
+            SortingProperty = 'PercentFree'
+            SortingType = 'Ascending'
+        },
+        @{
             Category = 'ExpiredSoonCertificates'
             Type = 'Display'
             Action = 'Include'
@@ -702,15 +749,15 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = 'ComputerName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'GeneralInformation'
             Type = 'Display'
             Action = 'Include'
-            Properties = '*' # A star * means all properties
+            Properties = '*'
             SortingProperty = 'ComputerName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'LocalAdministrators'
             Type = 'Display'
             Action = 'Include'
@@ -718,7 +765,7 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = 'ComputerName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'NonStandardScheduledTasks'
             Type = 'Display'
             Action = 'Include'
@@ -726,7 +773,7 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = @('ComputerName','Last Run Time')
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'NonStandardServices'
             Type = 'Display'
             Action = 'Include'
@@ -734,7 +781,7 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = 'ComputerName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'PendingReboot'
             Type = 'Display'
             Action = 'Include'
@@ -742,7 +789,7 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = 'ComputerName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'SharedPrinters'
             Type = 'Display'
             Action = 'Include'
@@ -750,7 +797,7 @@ if ($null -eq $DefaultFilters) {
             SortingProperty = 'ComputerName','PrinterName'
             SortingType = 'Ascending'
         },
-        [PSCustomObject]@{
+        @{
             Category = 'UpdateInfo'
             Type = 'Display'
             Action = 'Include'
