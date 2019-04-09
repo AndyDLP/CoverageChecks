@@ -969,11 +969,11 @@ foreach ($Domain in $ThisForest.Domains) {
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
     $str = @()
-    #$GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
-    #if ($null -ne $GPOChanges) { 
-    #    $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
-    #    $GPOChanges = $str -join ', '
-    #}
+    $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun"
+    if ($null -ne $GPOChanges) { 
+        $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
+        $GPOChanges = $str -join ', '
+    }
 
     ##### AD Object info #####
     $DomainObjectInfoParams = @{}
@@ -991,14 +991,14 @@ foreach ($Domain in $ThisForest.Domains) {
         OUVulnerableToAccidentalDeletion = if ($AllVulnerableOUs.count -gt 0) { ($AllVulnerableOUs -join ', ') } else { 'None - ALL OK' }
         UsersWithNoPasswordExpiry = if ($AllUsersNoExpiryPW.count -gt 0) { ($AllUsersNoExpiryPW -join ', ') } else { 'None - ALL OK' }
         UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
-        #GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
+        GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
     }
     $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
 
     foreach ($Property in $DomainObjectInfo.psobject.properties.Name) {
-        Write-Verbose "$($Domain.Name) $($Property): $($DomainObjectInfo.$Property)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.Name) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Verbose "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
     }
 } # foreach domain
 
