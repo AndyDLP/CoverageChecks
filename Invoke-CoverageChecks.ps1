@@ -627,7 +627,8 @@ if (-not $PSScriptRoot) {
 # Todays date in filename compatible format
 $Today = (Get-Date -Format "dd-MM-yy")
 
-if ($null -eq "$PSScriptRoot\Data\Logs") { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
+if ($null -eq (Get-Item -Path "$PSScriptRoot\Data" -ErrorAction SilentlyContinue) ) { mkdir "$PSScriptRoot\Data" | Out-Null }
+if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
 $LogFilePath = (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log")
 
 
