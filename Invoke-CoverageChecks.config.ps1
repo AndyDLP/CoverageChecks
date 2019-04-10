@@ -39,7 +39,7 @@ $DefaultFilters = @(
         Type = 'Colour'
         Property = 'PercentFree'
         Comparison = '-lt'
-        Value = '30'
+        Value = '50'
     },
     @{
         Category = 'GeneralInformation'
