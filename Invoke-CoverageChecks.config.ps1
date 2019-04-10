@@ -53,21 +53,21 @@ $DefaultFilters = @(
         Type = 'Colour'
         Property = 'State'
         Comparison = '-eq'
-        Value = "'Stopped'"
+        Value = '"Stopped"'
     },
     @{
         Category = 'PendingReboot'
         Type = 'Colour'
         Property = 'RebootPending'
         Comparison = '-eq'
-        Value = "'$True'"
+        Value = '"$true"'
     },
     @{
         Category = 'UpdateInfo'
         Type = 'Colour'
         Property = 'LastInstall'
         Comparison = '-lt'
-        Value = "'((Get-Date).AddMonths(-3))'"
+        Value = '"((Get-Date).AddMonths(-3))"'
     },
 
 
