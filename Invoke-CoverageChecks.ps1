@@ -1433,9 +1433,12 @@ if ($VCentersAndESXIHosts.count -gt 0) {
                 # $ImportedCred = Import-CliXml .\credential.xml
                 $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
                 $ConnectedVMwareList += $VIServer
+
+                # gather data
                 $VMList = Get-VM -Server $VIServer
                 $SnapshotList = $VMList | Get-Snapshot -Server $VIServer
-
+                $Datastores = Get-Datastore -Server $VIServer
+                $ESXEvents = Get-VIEvent -Server $VIServer
 
             }
             catch {
