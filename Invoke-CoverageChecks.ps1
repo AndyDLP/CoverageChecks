@@ -909,7 +909,7 @@ Import-Module -Name $RequiredModules -ErrorAction Stop -Verbose:$false
 ########################################################
 # GET AD INFORMATION
 
-# !Assumption is the environment is one forest with one root domain only!
+# !Assumption is the environment is one forest only!
 
 $ThisForest = Get-ADForest
 
