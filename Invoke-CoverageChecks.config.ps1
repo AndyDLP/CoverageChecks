@@ -151,6 +151,7 @@ $DefaultFilters = @(
 
 # Specify a list of VCenter servers or ESXI hosts to gather information from
 # It is assumed that AD authentication has been enabled for the user running this script
+# TODO: Add option to specify different credentials (Save to CLIXML?)
 $VCentersAndESXIHosts = @()
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
