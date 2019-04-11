@@ -1270,7 +1270,7 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
-                    if ((Get-Service Spooler).Status -eq 'Running') {
+                    if ($InstalledRoles -contains 'Print-Server') {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
                         if ($null -ne $SharedPrinters) {
                             $PrinterList = @()
@@ -1317,6 +1317,26 @@ foreach ($Server in $ServerList) {
                     if ($null -ne $ExpiredSoonCertificates) {
                         $ExpiredSoonCertificates | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name ComputerName -Value $env:COMPUTERNAME }
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
+                    }
+
+                    # DHCP information
+                    if ($InstalledRoles -contains 'DHCP') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # WSUS information
+                    if ($InstalledRoles -contains 'UpdateServices') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # WDS information
+                    if ($InstalledRoles -contains 'WDS') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # Hyper-V information
+                    if ($InstalledRoles -contains 'Hyper-V') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
                     }
                     
                     # Send the resulting hashtable out
