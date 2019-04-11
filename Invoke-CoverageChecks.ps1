@@ -1400,7 +1400,10 @@ foreach ($Server in $ServerList) {
 ##########################################################
 # BEGIN OUTPUT
 
-$CSSHeaders = @"
+if ($null -eq $CSSHeaders) {
+    Write-Warning "CSSHeaders variable not found, using system default"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "CSSHeaders variable not found, using system default"
+    $CSSHeaders = @"
 <style type="text/css">
 body {
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
@@ -1498,6 +1501,8 @@ table{ margin-left: 20px; }
 
 </style>
 "@
+}
+
 $fragments = @()
 $fragments = $fragments + "<H1>ECI Coverage Report - $(Get-Date)</H1>"
 
@@ -1547,7 +1552,7 @@ foreach ($ServerInfo in $AllServerInfo) {
     $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
 }
 $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
-Write-Verbose ($UniqueProperties | Out-String)
+Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
     $Frag = $null
@@ -1620,14 +1625,15 @@ foreach ($Property in $UniqueProperties) {
                 Write-Verbose ($frag.table.tr[$i].td[$ColumnHeader]).GetType()
                 Write-Verbose "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
-                $str = 'if (' + $FilterValue + " $($filter.comparison) " + '$frag.table.tr[$i].td[$ColumnHeader]){ $true } else { $false }'
+                $OtherType = if ($FilterValue.GetType().Name -in @('Array','Hashtable')) {$null} else { "[$($FilterValue.GetType().Name)]" }
+                $str = ( 'if ('+ $OtherType + '"$frag.table.tr[$i].td[$ColumnHeader]" '  + "$($filter.comparison) " + $FilterValue + '){ $true } else { $false }' )
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
                 $ColourCode = [Scriptblock]::Create($str)
                 $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
                 Write-Verbose "Code return value: $Return"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
-                if ($Return -eq $false) {
+                if ($Return -eq $true) {
                     $class = $frag.CreateAttribute("class")
                     $class.value = "alert"
                     $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
