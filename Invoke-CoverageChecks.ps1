@@ -1180,7 +1180,7 @@ Write-Verbose "All domains server list: $($ServerList -join ', ')"
 Write-Log -Log $LogFilePath -Type INFO -Text "All domains server list: $($ServerList -join ', ')"
 
 
-# incremental counter
+# incremental counters & variable init
 $inc = 0
 $AllServerInfo = @()
 $FailedServers = @()
@@ -1421,8 +1421,29 @@ foreach ($Server in $ServerList) {
 # BEGIN VMWARE
 
 if ($VCentersAndESXIHosts.count -gt 0) {
-    
-}
+    $ConnectedVMwareList = @()
+    $FailedVMwareList = @()
+    foreach ($Server in $VCentersAndESXIHosts) {
+        $CanPing = Test-Connection -ComputerName $Server -Quiet -Count 2
+        if ($CanPing -eq $true) {
+            try {
+                # TODO: Add export + import of credentials for easy re-use (run as service account)
+                # Below works for same user on same machine only (encrypts the password only)
+                # $Cred = Get-Credential Domain\User | Export-CliXml .\Credential.xml
+                # $ImportedCred = Import-CliXml .\credential.xml
+                $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
+                $ConnectedVMwareList += $VIServer
+                $VMList = Get-VM -Server $VIServer
+                $SnapshotList = $VMList | Get-Snapshot -Server $VIServer
+
+
+            }
+            catch {
+                $FailedVMwareList += $Server
+            }
+        } # canping
+    } # foreach vmware server
+} # vmware servers specified
 
 # END VMWARE
 #########################################################
