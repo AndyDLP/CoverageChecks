@@ -1628,6 +1628,11 @@ foreach ($Property in $UniqueProperties) {
     $Frag = $null
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
     $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
+    $inc = 1
+    $info | ForEach-Object -Process {
+        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+        $inc++
+    }
     # Filter the data as described in the filters defined above
     foreach ($filter in $MatchingFilters) {
         Write-Verbose "Filter: $($filter | Out-String)"
@@ -1645,7 +1650,7 @@ foreach ($Property in $UniqueProperties) {
             'Display' { 
                 $SelectSplat = @{}
                 if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',(@('Id') + $Filter.Properties ))
+                    $SelectSplat.Add('Property',(@('Id') + $Filter.Properties))
                 } elseif ($filter.Action -eq 'Exclude') {
                     $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
                 } else {
@@ -1682,13 +1687,6 @@ foreach ($Property in $UniqueProperties) {
         Write-Verbose "Property info for $Property`: $($info | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property info for $Property`: $($info | Out-String)"
 
-        # add ID
-        $inc = 1
-        $info | ForEach-Object -Process {
-            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc
-            $inc++
-        }
-
         [string]$stringOut = $info | ConvertTo-Html -Fragment
         [xml]$frag = $stringOut
         Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
@@ -1706,11 +1704,14 @@ foreach ($Property in $UniqueProperties) {
                 Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
                 Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
 
-                $ActualValue = ($info | Where-Object -FilterScript { $info.inc -eq [int]($frag.table.tr[$i].td[0]) })."$Property"
-                Write-Verbose "Data value: $ActualValue"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $ActualValue"
-                Write-Verbose "Data type: $($ActualValue.GetType())"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Data type: $($ActualValue.GetType())"
+                $ActualValue = ($info | Where-Object -FilterScript { $info.Id -eq [int]($frag.table.tr[$i].td[0]) })."$Property"
+                Write-Verbose "Actual value: $($ActualValue | Out-String)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
+                Write-Verbose "Actual type: $($ActualValue.GetType())"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Actual type: $($ActualValue.GetType())"
+                Write-Verbose "FilterValue: $($FilterValue | Out-String)"
+
+                Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($FilterValue | Out-String)"
 
                 $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $FilterValue ){ $true } else { $false }' )
 
@@ -1728,8 +1729,8 @@ foreach ($Property in $UniqueProperties) {
                     $class.value = "alert"
                     $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
 
-                    Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
-                    Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
+                    Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader].InnerText)"
+                    Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader].InnerText)"
                 }
             } # for every row in HTML table
         } # foreach colour
