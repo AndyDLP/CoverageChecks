@@ -79,7 +79,7 @@ $DefaultFilters = @(
         Category = 'Disks'
         Type = 'Display'
         Action = 'Include'
-        Properties = '*'
+        Properties = @('ComputerName','Volume','TotalSize','FreeSpace','PercentFree')
         SortingProperty = 'PercentFree'
         SortingType = 'Ascending'
     },
@@ -95,7 +95,7 @@ $DefaultFilters = @(
         Category = 'GeneralInformation'
         Type = 'Display'
         Action = 'Include'
-        Properties = '*'
+        Properties = @('ComputerName','OperatingSystem','IsVirtual','IsServerCore','SMB1Enabled','InstallDate','LastBootUpTime','CPUs','MemoryGB')
         SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
     },
@@ -103,7 +103,7 @@ $DefaultFilters = @(
         Category = 'LocalAdministrators'
         Type = 'Display'
         Action = 'Include'
-        Properties = '*'
+        Properties = @('ComputerName','Group','Members')
         SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
     },
