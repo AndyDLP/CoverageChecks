@@ -680,133 +680,94 @@ if ($null -eq $DefaultFilters) {
     Write-Warning "DefaultFilters variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "DefaultFilters variable not found, using system defaults"
     $DefaultFilters = @(
-        @{
-            Category = 'Disks'
-            Type = 'Property'
-            Property = 'PercentFree'
-            Comparison = '-lt'
-            Value = '100' # only show disks at 100% of less free space (example)
-        },
-
-        
-        @{
-            Category = 'Disks'
-            Type = 'Colour'
-            Property = 'PercentFree'
-            Comparison = '-lt'
-            Value = '30'
-        },
-        @{
-            Category = 'GeneralInformation'
-            Type = 'Colour'
-            Property = 'LastBootUpTime'
-            Comparison = '-gt'
-            Value = '"((Get-Date).AddDays(-2))"'
-        },
-        @{
-            Category = 'NonStandardServices'
-            Type = 'Colour'
-            Property = 'State'
-            Comparison = '-eq'
-            Value = "'Stopped'"
-        },
-        @{
-            Category = 'PendingReboot'
-            Type = 'Colour'
-            Property = 'RebootPending'
-            Comparison = '-eq'
-            Value = "'$True'"
-        },
-        @{
-            Category = 'UpdateInfo'
-            Type = 'Colour'
-            Property = 'LastInstall'
-            Comparison = '-lt'
-            Value = "'((Get-Date).AddMonths(-3))'"
-        },
-
-
-        @{
-            Category = 'DFSRBacklogs'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'Disks'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'PercentFree'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'ExpiredSoonCertificates'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'GeneralInformation'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'LocalAdministrators'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'NonStandardScheduledTasks'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
-            SortingProperty = @('ComputerName','Last Run Time')
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'NonStandardServices'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'PendingReboot'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'SharedPrinters'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
-            SortingProperty = 'ComputerName','PrinterName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'UpdateInfo'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        }
-    )
+    @{
+        Category = 'Disks'
+        Type = 'Property'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 100 # only show disks at 100% of less free space (example)
+    },
+    @{
+        Category = 'DFSRBacklogs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Disks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Volume','TotalSize','FreeSpace','PercentFree')
+        SortingProperty = 'PercentFree'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'GeneralInformation'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','OperatingSystem','IsVirtual','IsServerCore','SMB1Enabled','InstallDate','LastBootUpTime','CPUs','MemoryGB')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'LocalAdministrators'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Group','Members')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @(@{n='ComputerName';e={$_.HostName}},'TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+        SortingProperty = @('ComputerName','Last Run Time')
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'PendingReboot'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'SharedPrinters'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
+        SortingProperty = 'ComputerName','PrinterName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'UpdateInfo'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    }
+)
 }
 Write-Verbose "$($DefaultFilters.Count) filters loaded"
 Write-Log -Log $LogFilePath -Type INFO -Text "$($DefaultFilters.Count) filters loaded"
@@ -820,6 +781,71 @@ if ($null -eq $IgnoredServers) {
 Write-Verbose ("Servers ignored: " + $IgnoredServers -join ', ')
 Write-Log -Log $LogFilePath -Type INFO -Text ("Servers ignored: " + $IgnoredServers -join ', ')
 
+
+if ($null -eq $ConditionalFormatting) {
+    Write-Warning "ConditionalFormatting variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "ConditionalFormatting variable not found, using system defaults"
+    $ConditionalFormatting = @(
+    @{
+        Category = 'Disks'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 50
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Property = 'Run As User'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'State'
+        Comparison = '-eq'
+        Value = "Stopped"
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'StartName'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'PendingReboot'
+        Property = 'RebootPending'
+        Comparison = '-eq'
+        Value = $true
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotBefore'
+        Comparison = '-gt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotAfter'
+        Comparison = '-lt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'UpdateInfo'
+        Property = 'UpToDate'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SharedPrinters'
+        Property = 'IsPingable'
+        Comparison = '-eq'
+        Value = $false
+    }
+)
+}
+Write-Verbose ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
+Write-Log -Log $LogFilePath -Type INFO -Text ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
+
+
 if ($null -eq $SendEmail) {
     Write-Warning "SendEmail variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "SendEmail variable not found, using system defaults"
@@ -829,7 +855,6 @@ if ($null -eq $SendEmail) {
 Write-Verbose "Send email enabled: $SendEmail"
 Write-Log -Log $LogFilePath -Type INFO -Text "Send email enabled: $SendEmail"
 
-# Only define the below if email is enabled
 if ($SendEmail -eq $true) {
 
     if ($null -eq $TargetEmail) {
@@ -949,6 +974,7 @@ foreach ($Domain in $ThisForest.Domains) {
         InfrastructureMaster = $ThisDomain.InfrastructureMaster
         Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
         SYSVOLReplicationMode = $SYSVOLReplicationMode
+        ADRecycleBinEnabled = [bool]((Get-ADOptionalFeature -filter {Name -eq "Recycle Bin Feature"}).EnabledScopes.Count)
     }
     if ($null -ne $Differences) {
         $ADInfoParams.Add('Notes',"MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)")
@@ -1017,7 +1043,6 @@ foreach ($DC in $AllDomainControllersPS) {
 
     # Find if PC is ON and responding to WinRM
     $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
-    # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
     try {
         Test-WSMan -ComputerName $DC.Name -ErrorAction Stop | Out-Null
         $ServerWSManrunning = $true
@@ -1068,6 +1093,40 @@ foreach ($DC in $AllDomainControllersPS) {
                         $OutputObjectParams.Add("SYSVOL volume % free",([math]::round($PercentFree)))
                     }
                 }
+
+                # DCDiag parsing
+                $DCDiagString = dcdiag.exe
+                $PassedTests = $DCDiagString | Select-String -Pattern 'passed test'
+                $FailedTests = $DCDiagString | Select-String -Pattern 'failed test'
+
+                <#
+                $Report = @()
+                $DCDIAG = dcdiag.exe
+                $OutputObjectParams = @{
+                    ComputerName = $env:COMPUTERNAME
+                }
+
+                Foreach ($Entry in $DCDIAG) {
+                    Switch -Regex ($Entry) {
+                        "Starting" {$Testname = ($Entry -replace ".*Starting test: ").Trim()}
+                        "passed|failed" {
+                            If ($Entry -match "Passed") {
+                                $TestStatus = "Passed"
+                            } Else {
+                                $TestStatus = "** Failed **"
+                            }
+                        }
+                    }
+                    if (($TestName -ne $null) -and ($TestStatus -ne $null)) {
+                        $OutputObjectParams.Add($TestName, $TestStatus)
+                        $TestName
+                        $testStatus
+                    }
+                }
+                $Report += [PSCustomObject]$OutputObjectParams
+                $Report | select ComputerName, NetLogons, KccEvent, Replications, Services, SystemLog, SysVolCheck | ft * -AutoSize
+                #>
+
                 $OutputObjectParams
             } -ErrorAction Stop -ArgumentList $DC
 
@@ -1444,7 +1503,7 @@ if ($VCentersAndESXIHosts.count -gt 0) {
         if ($CanPing -eq $true) {
             try {
                 # TODO: Add export + import of credentials for easy re-use (run as service account)
-                # Below works for same user on same machine only (encrypts the password only)
+                # Below works for same user on same machine only (encrypts the password only) - Run as the user running the script not the principal
                 # $Cred = Get-Credential Domain\User | Export-CliXml .\Credential.xml
                 # $ImportedCred = Import-CliXml .\credential.xml
                 $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
@@ -1691,8 +1750,8 @@ foreach ($Property in $UniqueProperties) {
         [xml]$frag = $stringOut
         Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        $ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
-        foreach ($filter in $ColourFilters) {
+        #$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
+        foreach ($filter in $ConditionalFormatting) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
                 $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
 

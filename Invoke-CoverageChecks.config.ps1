@@ -1,27 +1,25 @@
-#region Filters
+#region config
 <#
 Define a filter for the outputted data
 Make sure that for multiple filters, you have a comma between filter definitions
 
-This does not apply for AD info / Domain controller info / DFSR info (yet)
+This does not apply for AD info / Domain controller info / SYSVOL backlog info (yet)
 
 Possible values for filters:
  - Category        = Whatever the heading is before the table in the outputted report, can change with additional data
  - Type            = Property - For defining thresholds on a property e.g. The example below can be changed to only show Disks with the property 'PercentFree' of less than 30 (%) by change the value to 30
                    = Display  - For defining what properties show and how to sort the output table. Some filters are already in place with this option
-                   = Colour   - For defining a level or threshold at which the property will show in a colour (red for now)
                    = Hidden   - Set to this option to fully hide the category (even if there are potential issues within it)
- - Property        = [Only available for a filter types: Property & Colour] - Specify the property name / column header to filter on
- - Comparison      = [Only available for a filter types: Property & Colour] - Specify the comparison i.e. greater than or less than.
+ - Property        = [Only available for a filter types: Property] - Specify the property name / column header to filter on
+ - Comparison      = [Only available for a filter types: Property] - Specify the comparison i.e. greater than or less than.
                      See PowerShell comparison operators: https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
- - Value           = [Only available for a filter types: Property & Colour] - Specify the value to filter against
+ - Value           = [Only available for a filter types: Property] - Specify the value to filter against
 
  - Action          = [Only available for a filter type of Display] - Specify whether to Include or Exclude properties
  - Properties      = [Only available for a filter type of Display] - Specify which properties (As a comma separated list of strings) to show / hide. Enter a star "*" for all properties. Is passed verbatim to Select-Object so hashtables work for renaming column headers
  - SortingProperty = [Only available for a filter type of Display] - Specify a property to sort the resulting table on
  - SortingType     = [Only available for a filter type of Display] - Specify the sorting type to use; either Ascending or Descending
 
- - 
 #>
 
 $DefaultFilters = @(
@@ -31,76 +29,6 @@ $DefaultFilters = @(
         Property = 'PercentFree'
         Comparison = '-lt'
         Value = 100 # only show disks at 100% of less free space (example)
-    },
-    @{
-        Category = 'Disks'
-        Type = 'Colour'
-        Property = 'PercentFree'
-        Comparison = '-lt'
-        Value = 50
-    },
-    @{
-        Category = 'GeneralInformation'
-        Type = 'Colour'
-        Property = 'LastBootUpTime'
-        Comparison = '-gt'
-        Value = ((Get-Date).AddDays(-2))
-    },
-    @{
-        Category = 'NonStandardScheduledTasks'
-        Type = 'Colour'
-        Property = 'Run As User'
-        Comparison = '-match'
-        Value = 'administrator'
-    },
-    @{
-        Category = 'NonStandardServices'
-        Type = 'Colour'
-        Property = 'State'
-        Comparison = '-eq'
-        Value = "Stopped"
-    },
-    @{
-        Category = 'NonStandardServices'
-        Type = 'Colour'
-        Property = 'StartName'
-        Comparison = '-match'
-        Value = 'administrator'
-    },
-    @{
-        Category = 'PendingReboot'
-        Type = 'Colour'
-        Property = 'RebootPending'
-        Comparison = '-eq'
-        Value = $true
-    },
-    @{
-        Category = 'ExpiredSoonCertificates'
-        Type = 'Colour'
-        Property = 'NotBefore'
-        Comparison = '-gt'
-        Value = (Get-Date)
-    },
-    @{
-        Category = 'ExpiredSoonCertificates'
-        Type = 'Colour'
-        Property = 'NotAfter'
-        Comparison = '-lt'
-        Value = (Get-Date)
-    },
-    @{
-        Category = 'UpdateInfo'
-        Type = 'Colour'
-        Property = 'UpToDate'
-        Comparison = '-eq'
-        Value = $false
-    },
-    @{
-        Category = 'SharedPrinters'
-        Type = 'Colour'
-        Property = 'IsPingable'
-        Comparison = '-eq'
-        Value = $false
     },
     @{
         Category = 'DFSRBacklogs'
@@ -146,7 +74,7 @@ $DefaultFilters = @(
         Category = 'NonStandardScheduledTasks'
         Type = 'Display'
         Action = 'Include'
-        Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+        Properties = @(@{n='ComputerName';e={$_.HostName}},'TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
         SortingProperty = @('ComputerName','Last Run Time')
         SortingType = 'Ascending'
     },
@@ -181,6 +109,78 @@ $DefaultFilters = @(
         Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
         SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
+    }
+)
+
+<#
+Define conditional formatting for the outputted data
+Make sure that for multiple conditions, you have a comma between condition definitions
+
+This does not apply for AD info / Domain controller info / SYSVOL backlog info (yet)
+
+Possible values for conditions:
+ - Category        = Whatever the heading is before the table in the outputted report
+ - Property        = Specify the property name / column header to format on
+ - Comparison      = Specify the comparison i.e. greater than or less than.
+                     See PowerShell comparison operators: https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-6
+ - Value           = Specify the value to filter against
+
+#>
+
+$ConditionalFormatting = @(
+    @{
+        Category = 'Disks'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 50
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Property = 'Run As User'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'State'
+        Comparison = '-eq'
+        Value = "Stopped"
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'StartName'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'PendingReboot'
+        Property = 'RebootPending'
+        Comparison = '-eq'
+        Value = $true
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotBefore'
+        Comparison = '-gt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotAfter'
+        Comparison = '-lt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'UpdateInfo'
+        Property = 'UpToDate'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SharedPrinters'
+        Property = 'IsPingable'
+        Comparison = '-eq'
+        Value = $false
     }
 )
 
