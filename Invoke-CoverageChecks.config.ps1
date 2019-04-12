@@ -156,15 +156,6 @@ $VCentersAndESXIHosts = @()
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
 $IgnoredServers = @(
-    'HV-01',
-    'JENKINS',
-    'PSTEST',
-    'SCCM-01',
-    'PASSWORDSTATE',
-    'SCVMM',
-    'GLR-WIN1',
-    'SQL-01',
-    'SRV1'
 )
 
 # Change to $true to enable reporting sending via email
@@ -187,7 +178,7 @@ if ($SendEmail -eq $true) {
     $FromEmail = "ServerChecks@example.com"
     
     # The subject for the report email 
-    $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+    $MailSubject = "Coverage Checks - $(Get-Date)"
 }
 
 # Report CSS
