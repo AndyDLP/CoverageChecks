@@ -1683,6 +1683,14 @@ foreach ($Property in $UniqueProperties) {
     if ($null -ne $info) {
         Write-Verbose "Property info for $Property`: $($info | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property info for $Property`: $($info | Out-String)"
+
+        # add ID
+        $inc = 1
+        $info | ForEach-Object -Process {
+            Add-Member -MemberType 'NoteProperty' -Name 'Id' -Value $inc
+            $inc++
+        }
+
         [string]$stringOut = $info | ConvertTo-Html -Fragment
         [xml]$frag = $stringOut
         Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
