@@ -47,11 +47,25 @@ $DefaultFilters = @(
         Value = ((Get-Date).AddDays(-2))
     },
     @{
+        Category = 'NonStandardScheduledTasks'
+        Type = 'Colour'
+        Property = 'Run As User'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
         Category = 'NonStandardServices'
         Type = 'Colour'
         Property = 'State'
         Comparison = '-eq'
         Value = "Stopped"
+    },
+    @{
+        Category = 'NonStandardServices'
+        Type = 'Colour'
+        Property = 'StartName'
+        Comparison = '-match'
+        Value = 'administrator'
     },
     @{
         Category = 'PendingReboot'
@@ -61,9 +75,30 @@ $DefaultFilters = @(
         Value = $true
     },
     @{
+        Category = 'ExpiredSoonCertificates'
+        Type = 'Colour'
+        Property = 'NotBefore'
+        Comparison = '-gt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Type = 'Colour'
+        Property = 'NotAfter'
+        Comparison = '-lt'
+        Value = (Get-Date)
+    },
+    @{
         Category = 'UpdateInfo'
         Type = 'Colour'
         Property = 'UpToDate'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SharedPrinters'
+        Type = 'Colour'
+        Property = 'IsPingable'
         Comparison = '-eq'
         Value = $false
     },

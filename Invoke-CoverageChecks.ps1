@@ -625,11 +625,11 @@ if (-not $PSScriptRoot) {
 }
 
 # Todays date in filename compatible format
-$Today = (Get-Date -Format "dd-MM-yy")
+$Today = (Get-Date -Format "yyyy-MM-dd-HH-mm-ss")
 
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Data" -ErrorAction SilentlyContinue) ) { mkdir "$PSScriptRoot\Data" | Out-Null }
-if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
-$LogFilePath = (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log")
+if ($null -eq (Get-Item -Path "$PSScriptRoot\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Logs" | Out-Null }
+$LogFilePath = (Join-Path -Path "$PSScriptRoot\Logs" -ChildPath "$Today.log")
 
 
 Write-Log -Log $LogFilePath -Type INFO -Text "Computer name: $env:COMPUTERNAME"
