@@ -1229,6 +1229,7 @@ foreach ($Server in $ServerList) {
                     $OutputObjectParams = @{}
 
                     $InfoObject = [PSCustomObject]@{
+                        GUID = [GUID]::NewGuid().Guid
                         ComputerName = $env:COMPUTERNAME
                         OperatingSystem = $OSInfo.Caption
                         IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
@@ -1243,11 +1244,13 @@ foreach ($Server in $ServerList) {
 
                     # Disk info
                     $Disks = @()
+                    $GUID = [GUID]::NewGuid().Guid
                     foreach ($Disk in $DiskInfo) {
                         $Freespace = $Disk.FreeSpace / 1GB
                         $TotalSize = $Disk.Size / 1GB
                         $PercentFree = (($Freespace / $TotalSize) * 100)
                         $DiskObj = [PSCustomObject]@{
+                            GUID = $GUID
                             ComputerName = $env:COMPUTERNAME
                             Volume = $Disk.DeviceId
                             TotalSize = [math]::Round($TotalSize)
@@ -1262,6 +1265,7 @@ foreach ($Server in $ServerList) {
                     # TODO: Filter domain admins / Administrator account
                     $LocalAdmins = net localgroup "Administrators" | Where-Object -FilterScript {$_ -AND $_ -notmatch "command completed successfully"} | Select-Object -Skip 4
                     $AdminObj = [PSCustomObject]@{
+                        GUID = [GUID]::NewGuid().Guid
                         ComputerName = $env:COMPUTERNAME
                         Group = 'Administrators'
                         Members = $LocalAdmins
@@ -1274,8 +1278,10 @@ foreach ($Server in $ServerList) {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
                         if ($null -ne $SharedPrinters) {
                             $PrinterList = @()
+                            $GUID = [GUID]::NewGuid().Guid
                             foreach ($Printer in $SharedPrinters) {
                                 $PrinterObjectParams = @{
+                                    GUID = $GUID
                                     ComputerName = $env:COMPUTERNAME
                                     PrinterName = $Printer.Name
                                     PrinterDriver = $Printer.DriverName
@@ -1301,6 +1307,8 @@ foreach ($Server in $ServerList) {
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
                     $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
+                        $GUID = ([GUID]::NewGuid().Guid)
+                        $NonStandardScheduledTasks | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
                     }
 
@@ -1309,13 +1317,19 @@ foreach ($Server in $ServerList) {
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
                     $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.Name -notin $IgnoredServiceNames) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
+                        $GUID = ([GUID]::NewGuid().Guid)
+                        $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
                     }
 
                     # Expired certificates / less than 30 days
                     $ExpiredSoonCertificates = Get-ChildItem -Path 'cert:\LocalMachine\My\' -Recurse | Where-Object -FilterScript { (($_.NotBefore -gt (Get-Date)) -or ($_.NotAfter -lt (Get-Date).AddDays(30))) -and ($null -ne $_.Thumbprint) }
                     if ($null -ne $ExpiredSoonCertificates) {
-                        $ExpiredSoonCertificates | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name ComputerName -Value $env:COMPUTERNAME }
+                        $GUID = ([GUID]::NewGuid().Guid)
+                        $ExpiredSoonCertificates | ForEach-Object -Process {
+                            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'ComputerName' -Value $env:COMPUTERNAME
+                            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
+                        }
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
                     }
 
@@ -1347,16 +1361,28 @@ foreach ($Server in $ServerList) {
                 if ($InstalledRoles -contains 'FS-DFS-Replication') {
                     $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}  -ArgumentList $Server.Name
                     $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' }
-                    $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
+                    if ($null -ne $DFSRBacklogs) {
+                        $GUID = ([GUID]::NewGuid().Guid)
+                        $DFSRBacklogs | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
+                        $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
+                    }
                 }
 
                 # Get Windows Update info
                 $UpdateInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-RecentUpdateInfo}
-                $OutputObjectParams.Add('UpdateInfo',$UpdateInfo)
+                if ($null -ne $UpdateInfo) {
+                    $GUID = ([GUID]::NewGuid().Guid)
+                    $UpdateInfo | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
+                    $OutputObjectParams.Add('UpdateInfo',$UpdateInfo)
+                }
 
                 # pending reboot
                 $RebootInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-PendingReboot}
-                $OutputObjectParams.Add('PendingReboot',$RebootInfo)
+                if ($null -ne $RebootInfo) {
+                    $GUID = ([GUID]::NewGuid().Guid)
+                    $RebootInfo | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value $GUID
+                    $OutputObjectParams.Add('PendingReboot',$RebootInfo)
+                }
 
                 # create object from params
                 $ServerObject = [PSCustomObject]$OutputObjectParams
