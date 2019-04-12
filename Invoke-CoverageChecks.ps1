@@ -921,8 +921,8 @@ $AllDomainObjectInfo =@()
 foreach ($Domain in $ThisForest.Domains) {
     $ThisDomain = Get-ADDomain -Identity $Domain
     
-    Write-Verbose "Domain name: $($Domain.DNSRoot)"
-    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($Domain.DNSRoot)"
+    Write-Verbose "Domain name: $($ThisDomain.DNSRoot)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($ThisDomain.DNSRoot)"
 
     $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
     $AllDomainControllersAD = Get-ADObject -Server $ThisDomain.PDCEmulator -Filter {ObjectClass -eq 'computer'} -SearchBase "OU=Domain Controllers,$($ThisDomain.DistinguishedName)"
@@ -962,8 +962,8 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
     foreach ($Property in $ADInfo.psobject.properties.Name) {
-        Write-Verbose "$($Domain.Name) $($Property): $($ADInfo.$Property)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.Name) $($Property): $($ADInfo.$Property)"
+        Write-Verbose "$($ThisDomain.NetBIOSName) $($Property): $($ADInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($ThisDomain.NetBIOSName) $($Property): $($ADInfo.$Property)"
     }
 
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
@@ -997,8 +997,8 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
 
     foreach ($Property in $DomainObjectInfo.psobject.properties.Name) {
-        Write-Verbose "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Verbose "$($ThisDomain.NetBIOSName) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($ThisDomain.NetBIOSName) $($Property): $($DomainObjectInfo.$Property)"
     }
 } # foreach domain
 
@@ -1704,7 +1704,7 @@ foreach ($Property in $UniqueProperties) {
                 Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
                 Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
 
-                $ActualValue = ($info | Where-Object -FilterScript { $info.Id -eq [int]($frag.table.tr[$i].td[0]) })."$Property"
+                $ActualValue = ($info | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) })."$($Filter.Property)"
                 Write-Verbose "Actual value: $($ActualValue | Out-String)"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
                 Write-Verbose "Actual type: $($ActualValue.GetType())"
