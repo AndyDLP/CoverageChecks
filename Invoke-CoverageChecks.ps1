@@ -1321,10 +1321,8 @@ foreach ($Server in $ServerList) {
                     # Expired certificates / less than 30 days
                     $ExpiredSoonCertificates = Get-ChildItem -Path 'cert:\LocalMachine\My\' -Recurse | Where-Object -FilterScript { (($_.NotBefore -gt (Get-Date)) -or ($_.NotAfter -lt (Get-Date).AddDays(30))) -and ($null -ne $_.Thumbprint) }
                     if ($null -ne $ExpiredSoonCertificates) {
-                        $ExpiredSoonCertificates | ForEach-Object -Process {
-                            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'ComputerName' -Value $env:COMPUTERNAME
-                            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
-                        }
+                        $ExpiredSoonCertificates | Add-Member -MemberType 'NoteProperty' -Name 'ComputerName' -Value $env:COMPUTERNAME
+                        $ExpiredSoonCertificates | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
                     }
 
@@ -1699,24 +1697,34 @@ foreach ($Property in $UniqueProperties) {
         foreach ($filter in $ColourFilters) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
                 $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+
                 Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+
                 $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
+
                 Write-Verbose ($frag.table.tr[$i].td[$ColumnHeader]).GetType()
                 Write-Verbose "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
+
                 $OtherType = if ($FilterValue.GetType().Name -in @('Array','Hashtable')) {$null} else { "[$($FilterValue.GetType().Name)]" }
-                $str = ( 'if ('+ $OtherType + '"$frag.table.tr[$i].td[$ColumnHeader]" '  + "$($filter.comparison) " + $FilterValue + '){ $true } else { $false }' )
+                $ActualValue = ($info | Where-Object -FilterScript { $info.inc -eq [int]($frag.table.tr[$i].td[1]) }).$Property
+                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $FilterValue + ){ $true } else { $false }' )
+
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
+
                 $ColourCode = [Scriptblock]::Create($str)
                 $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+
                 Write-Verbose "Code return value: $Return"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
+
                 if ($Return -eq $true) {
                     $class = $frag.CreateAttribute("class")
                     $class.value = "alert"
                     $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+
                     Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                     Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
                 }
