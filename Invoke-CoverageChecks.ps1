@@ -1645,7 +1645,7 @@ foreach ($Property in $UniqueProperties) {
             'Display' { 
                 $SelectSplat = @{}
                 if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',$Filter.Properties)
+                    $SelectSplat.Add('Property',(@("Id") + $Filter.Properties ))
                 } elseif ($filter.Action -eq 'Exclude') {
                     $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
                 } else {
@@ -1685,7 +1685,7 @@ foreach ($Property in $UniqueProperties) {
         # add ID
         $inc = 1
         $info | ForEach-Object -Process {
-            Add-Member -MemberType 'NoteProperty' -Name 'Id' -Value $inc
+            Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc
             $inc++
         }
 
