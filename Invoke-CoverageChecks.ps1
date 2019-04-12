@@ -1645,9 +1645,9 @@ foreach ($Property in $UniqueProperties) {
             'Display' { 
                 $SelectSplat = @{}
                 if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',(@("Id") + $Filter.Properties ))
+                    $SelectSplat.Add('Property',(@('Id') + $Filter.Properties ))
                 } elseif ($filter.Action -eq 'Exclude') {
-                    $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
+                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
                 } else {
                     Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
                     Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
@@ -1703,13 +1703,16 @@ foreach ($Property in $UniqueProperties) {
 
                 $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
 
-                Write-Verbose ($frag.table.tr[$i].td[$ColumnHeader]).GetType()
-                Write-Verbose "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
+                Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
+                Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
 
-                $OtherType = if ($FilterValue.GetType().Name -in @('Array','Hashtable')) {$null} else { "[$($FilterValue.GetType().Name)]" }
-                $ActualValue = ($info | Where-Object -FilterScript { $info.inc -eq [int]($frag.table.tr[$i].td[1]) }).$Property
-                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $FilterValue + ){ $true } else { $false }' )
+                $ActualValue = ($info | Where-Object -FilterScript { $info.inc -eq [int]($frag.table.tr[$i].td[0]) })."$Property"
+                Write-Verbose "Data value: $ActualValue"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $ActualValue"
+                Write-Verbose "Data type: $($ActualValue.GetType())"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Data type: $($ActualValue.GetType())"
+
+                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $FilterValue ){ $true } else { $false }' )
 
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
