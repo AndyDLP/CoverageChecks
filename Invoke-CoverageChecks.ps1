@@ -1032,6 +1032,7 @@ foreach ($Domain in $ThisForest.Domains) {
 $AllDCInfo = @()
 $FailedDCInfo = @()
 $AllDCBacklogs = @()
+$DCDiagResults = @()
 $inc = 0
 
 foreach ($DC in $AllDomainControllersPS) {
@@ -1093,78 +1094,11 @@ foreach ($DC in $AllDomainControllersPS) {
                         $OutputObjectParams.Add("SYSVOL volume % free",([math]::round($PercentFree)))
                     }
                 }
-
-                # DCDiag parsing
-                $DCDiagString = dcdiag.exe
-                $PassedTests = $DCDiagString | Select-String -Pattern 'passed test'
-                $FailedTests = $DCDiagString | Select-String -Pattern 'failed test'
-
-                <#
-# http://www.anilerduran.com/index.php/2013/how-to-parse-dcdiag-output-with-powershell/
-
-Import-Module activedirectory
-$DCs = $(Get-ADDomainController -filter *).name
-$Results = New-Object System.Object
-$Report = @()
-
-Foreach ($DC in $DCs) 
-    {
-    $DCDIAG = dcdiag /s:$DC
-    $Results | Add-Member -name Server -Value $DC -Type NoteProperty -Force
-    Foreach ($Entry in $DCDIAG) 
-        {
-        Switch -Regex ($Entry) {
-            "Starting" {$Testname = ($Entry -replace ".*Starting test: ").Trim()}
-            "passed|failed" {If ($Entry -match "Passed") 
-                                {
-                                $TestStatus = "Passed"
-                                } Else {
-                                $TestStatus = "** Failed **"
-                                }
-                            }
-            }
-        If (($TestName -ne $null) -and ($TestStatus -ne $null)) 
-            {
-            $Results | Add-Member -Type NoteProperty -name $($TestName.Trim()) -Value $TestStatus -Force
-            }
-        }
-    $Report += $Results
-    }
-
-$Report | select Server, NetLogons, KccEvent, Replications, Services, SystemLog, SysVolCheck | ft * -AutoSize
-
-
-                $Report = @()
-                $DCDIAG = dcdiag.exe
-                $OutputObjectParams = @{
-                    ComputerName = $env:COMPUTERNAME
-                }
-
-                Foreach ($Entry in $DCDIAG) {
-                    Switch -Regex ($Entry) {
-                        "Starting" {$Testname = ($Entry -replace ".*Starting test: ").Trim()}
-                        "passed|failed" {
-                            If ($Entry -match "Passed") {
-                                $TestStatus = "Passed"
-                            } Else {
-                                $TestStatus = "** Failed **"
-                            }
-                        }
-                    }
-                    if (($TestName -ne $null) -and ($TestStatus -ne $null)) {
-                        $OutputObjectParams.Add($TestName, $TestStatus)
-                        $TestName
-                        $testStatus
-                    }
-                }
-                $Report += [PSCustomObject]$OutputObjectParams
-                $Report | select ComputerName, NetLogons, KccEvent, Replications, Services, SystemLog, SysVolCheck | ft * -AutoSize
-                #>
-
                 $OutputObjectParams
             } -ErrorAction Stop -ArgumentList $DC
 
             Write-Verbose "Gathering DFSR backlog information from $($DC.name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Gathering DFSR backlog information from $($DC.name)"
             $DCBacklog = Invoke-Command -Session $DCPSSession -ScriptBlock ${function:Get-DfsrBacklog} -ArgumentList $DC.Name
             $DCBacklog = $DCBacklog | Where-Object -FilterScript { $_.ReplicationGroupName -eq 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
@@ -1172,6 +1106,33 @@ $Report | select Server, NetLogons, KccEvent, Replications, Services, SystemLog,
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...?
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
+
+            # dcdiag
+            Write-Verbose "Gathering DCDIAG backlog information from $($DC.name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Gathering DCDIAG backlog information from $($DC.name)"
+            $DCDiag = Invoke-Command -Session $DCPSSession -ScriptBlock {
+                # DCDiag parsing
+                $DCDIAGResult = New-Object System.Object
+                $DCDIAGStr = dcdiag.exe
+                $DCDIAGResult | Add-Member -name ComputerName -Value $env:COMPUTERNAME -Type NoteProperty -Force
+                Foreach ($Entry in $DCDIAGStr) {
+                    Switch -Regex ($Entry) {
+                        "Starting" {
+                            $Testname = ($Entry -replace ".*Starting test: ").Trim()
+                        }
+                        "passed|failed" {
+                            $TestStatus = if ($Entry -match "Passed") { "Passed" } else { "Failed" }
+                        } # case pass or pail
+                    } # switch
+
+                    if (($TestName -ne $null) -and ($TestStatus -ne $null)) {
+                        $DCDIAGResult | Add-Member -Type NoteProperty -name $($TestName.Trim()) -Value $TestStatus -Force
+                    } # if not null
+                } # foreach line in DCDIAG output
+                $DCDIAGResult
+            } # scriptblock
+            $DCDiagResults = $DCDiagResults + $DCDiag
+            
 
             $DCResponse = [PSCustomObject]$OutputObjectParams
             # Reorder in selected order
@@ -1693,6 +1654,9 @@ foreach ($domain in $AllDomainInfo) {
 # DC Info fragments
 $fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
 
+# DC diag fragments
+$fragments = $fragments + ($DCDiagResults | ConvertTo-Html -Fragment -PreContent "<H2>DCDiag Results</H2>")
+
 # DFSR fragments
 $fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
@@ -1784,8 +1748,8 @@ foreach ($Property in $UniqueProperties) {
         [xml]$frag = $stringOut
         Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        #$ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
-        foreach ($filter in $ConditionalFormatting) {
+        $MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Property }
+        foreach ($filter in $MatchingFilters) {
             for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
                 $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
 
