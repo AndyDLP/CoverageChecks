@@ -41,6 +41,29 @@ Param (
 # BEGIN DEFINE FUNCTIONS
 
 function Write-Log {
+<#
+    .SYNOPSIS
+        Write to a log file
+    
+    .DESCRIPTION
+        Write to a log file with various options
+    
+    .PARAMETER Text
+        The text to add to the log file
+    
+    .PARAMETER Type
+        The log type, can be WARNING, ERROR or INFO
+    
+    .PARAMETER Log
+        The path to the log file (does not have to exist yet)
+    
+    .EXAMPLE
+        PS C:\> Write-Log -Log $LogFilePath -Type INFO -Text 'This is an informational log entry'
+    
+    .NOTES
+        Original from the internet (unsure of exact source)
+        Updated 2019-04-13 by Andy DLP
+#>
     param(
     [parameter(Mandatory=$true,
                ValueFromPipeline = $true,
@@ -608,7 +631,67 @@ function Get-GPOChanges {
     }
 }
 
+function Format-HTMLTable {
+<#
+    .SYNOPSIS
+        Format data to an HTML table with conditional formatting
+    
+    .DESCRIPTION
+        Format data to an HTML table with conditional formatting
+    
+    .PARAMETER TableData
+        The array of objects to turn into an HTML table
+    
+    .PARAMETER ConditionalFormatting
+        The conditions for fomatting the table (red highlights)
+    
+    .EXAMPLE
+        PS C:\> Format-HTMLTable -TableData (Get-Service)
+    
+    .NOTES
+        Andy DLP
+#>
+    param(
+        [parameter(Mandatory=$true,
+                Position = 1)]
+        [ValidateNotNullOrEmpty()]
+        [PSObject[]]$Data,
 
+        [parameter(Mandatory=$false,
+                Position = 2)]
+        [ValidateNotNullOrEmpty()]
+        [hashtable[]]$ConditionalFormatting = @{}
+    )
+
+    foreach ($Item in $Data) {
+        [array]$UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
+
+    foreach ($Property in $UniqueProperties) {
+        $frag = $null
+        $PropertyInfo = $Data | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+        $MatchingFormatting = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Property }
+
+        [string]$HTMLString = $PropertyInfo | ConvertTo-Html -Fragment
+        [xml]$HTMLFragment = $HTMLString
+
+        foreach ($filter in $MatchingFormatting) {
+            for ($i=1;$i -le $HTMLFragment.table.tr.count-1;$i++) {
+                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+                $ActualValue = ($PropertyInfo | Where-Object -FilterScript { $_.Id -eq ($HTMLFragment.table.tr[$i].td[0]) })."$($Filter.Property)"
+                $CodeString = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+                $ColourCode = [Scriptblock]::Create($CodeString)
+                $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+                if ($Return -eq $true) {
+                    $class = $HTMLFragment.CreateAttribute("class")
+                    $class.value = "alert"
+                    $HTMLFragment.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+                } # if value is true
+            } # for each table row
+        } # foreach filter
+    } # foreach property
+} # format HTML table
 
 # END DEFINE FUNCTIONS
 ########################################################
@@ -1131,6 +1214,7 @@ foreach ($DC in $AllDomainControllersPS) {
                 } # foreach line in DCDIAG output
                 $DCDIAGResult
             } # scriptblock
+            $DCdiag = $DCDiag | Select-Object -Property ComputerName,Connectivity,Advertising,FrsEvent,DFSREvent,SysVolCheck,KccEvent,KnowsOfRoleHolders,MachineAccount,NCSecDesc,NetLogons,ObjectsReplicated,Replications,RidManager,Services,SystemLog,VerifyReferences,CheckSDRefDom,CrossRefValidation,LocatorCheck,Intersite
             $DCDiagResults = $DCDiagResults + $DCDiag
             
 
@@ -1635,6 +1719,8 @@ foreach ($domain in $AllDomainInfo) {
     $DomainString = '<div id="report"><table>
     <colgroup><col/><col/></colgroup>
     <tr><th>Attribute</th><th>Value</th></tr>'
+    #$ColourCoded = ''
+    
     foreach ($Property in ($domain.PSObject.Properties.name)) {
         $DomainString = $DomainString + ("<tr><td>$Property</td>" + "<td>" + ($domain.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     
@@ -1648,7 +1734,7 @@ foreach ($domain in $AllDomainInfo) {
         $ObjectString = $ObjectString + ("<tr><td>$Property</td>" + "<td>" + ($ObjectInfo.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     }
     $ObjectString = $ObjectString + "</table>"
-    $fragments = $fragments + ("<H2>Domain info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>Monitored AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
+    $fragments = $fragments + ("<H2>DomainInfo: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>MonitoredADObjects: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
 }
 
 # DC Info fragments
@@ -1658,7 +1744,7 @@ $fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H
 $fragments = $fragments + ($DCDiagResults | ConvertTo-Html -Fragment -PreContent "<H2>DCDiag Results</H2>")
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
@@ -1727,9 +1813,6 @@ foreach ($Property in $UniqueProperties) {
                 }
                 $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
             }
-            'Colour' { 
-                # do nothing here?
-            }
             'Hidden' { 
                 $info = $null
             }
@@ -1756,7 +1839,6 @@ foreach ($Property in $UniqueProperties) {
                 Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
 
-                $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
 
                 Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
                 Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
@@ -1764,13 +1846,14 @@ foreach ($Property in $UniqueProperties) {
                 $ActualValue = ($info | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) })."$($Filter.Property)"
                 Write-Verbose "Actual value: $($ActualValue | Out-String)"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
+
                 Write-Verbose "Actual type: $($ActualValue.GetType())"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Actual type: $($ActualValue.GetType())"
-                Write-Verbose "FilterValue: $($FilterValue | Out-String)"
 
-                Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($FilterValue | Out-String)"
+                Write-Verbose "FilterValue: $($Filter.Value | Out-String)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($Filter.Value | Out-String)"
 
-                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $FilterValue ){ $true } else { $false }' )
+                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
 
                 Write-Verbose "Code string: $str"
                 Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
