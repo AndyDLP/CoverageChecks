@@ -631,68 +631,6 @@ function Get-GPOChanges {
     }
 }
 
-function Format-HTMLTable {
-<#
-    .SYNOPSIS
-        Format data to an HTML table with conditional formatting
-    
-    .DESCRIPTION
-        Format data to an HTML table with conditional formatting
-    
-    .PARAMETER TableData
-        The array of objects to turn into an HTML table
-    
-    .PARAMETER ConditionalFormatting
-        The conditions for fomatting the table (red highlights)
-    
-    .EXAMPLE
-        PS C:\> Format-HTMLTable -TableData (Get-Service)
-    
-    .NOTES
-        Andy DLP
-#>
-    param(
-        [parameter(Mandatory=$true,
-                Position = 1)]
-        [ValidateNotNullOrEmpty()]
-        [PSObject[]]$Data,
-
-        [parameter(Mandatory=$false,
-                Position = 2)]
-        [ValidateNotNullOrEmpty()]
-        [hashtable[]]$ConditionalFormatting = @{}
-    )
-
-    foreach ($Item in $Data) {
-        [array]$UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
-    }
-    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
-
-    foreach ($Property in $UniqueProperties) {
-        $frag = $null
-        $PropertyInfo = $Data | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
-        $MatchingFormatting = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Property }
-
-        [string]$HTMLString = $PropertyInfo | ConvertTo-Html -Fragment
-        [xml]$HTMLFragment = $HTMLString
-
-        foreach ($filter in $MatchingFormatting) {
-            for ($i=1;$i -le $HTMLFragment.table.tr.count-1;$i++) {
-                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-                $ActualValue = ($PropertyInfo | Where-Object -FilterScript { $_.Id -eq ($HTMLFragment.table.tr[$i].td[0]) })."$($Filter.Property)"
-                $CodeString = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-                $ColourCode = [Scriptblock]::Create($CodeString)
-                $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-                if ($Return -eq $true) {
-                    $class = $HTMLFragment.CreateAttribute("class")
-                    $class.value = "alert"
-                    $HTMLFragment.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-                } # if value is true
-            } # for each table row
-        } # foreach filter
-    } # foreach property
-} # format HTML table
-
 # END DEFINE FUNCTIONS
 ########################################################
 
@@ -1738,7 +1676,39 @@ foreach ($domain in $AllDomainInfo) {
 }
 
 # DC Info fragments
-$fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
+#$fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
+$inc = 1
+# all objects have the same properties so just use the first
+$Properties = ($AllDCInfo[0].PSObject.Properties.name)
+$AllDCInfo | ForEach-Object -Process {
+    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+    $inc++
+}
+[string]$stringOut = $AllDCInfo | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
+[xml]$frag = $stringOut
+Write-verbose "$stringOut"
+$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'Domain Controllers' }
+foreach ($filter in $MatchingFilters) {
+    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+        Write-verbose "$ColumnHeader"
+        $ActualValue = ($AllDCInfo | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) })."$($Filter.Property)"
+        Write-verbose $ActualValue
+        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+        Write-verbose "$str"
+        $ColourCode = [Scriptblock]::Create($str)
+        Write-verbose "$ColourCode"
+        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+        Write-verbose "$Return"
+        if ($Return -eq $true) {
+            $class = $frag.CreateAttribute("class")
+            $class.value = "alert"
+            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+        } # return true
+    } # for each row
+} # foreach
+Write-verbose $frag.InnerXml
+$fragments = $fragments + ("<H2>Domain Controllers</H2>" + $frag.InnerXml)
 
 # DC diag fragments
 $fragments = $fragments + ($DCDiagResults | ConvertTo-Html -Fragment -PreContent "<H2>DCDiag Results</H2>")
@@ -1874,6 +1844,7 @@ foreach ($Property in $UniqueProperties) {
                 }
             } # for every row in HTML table
         } # foreach colour
+
         $fragments = $fragments + ("<H2>$Property</H2>" + $frag.InnerXml)
     } # not null info
 } # foreach property
