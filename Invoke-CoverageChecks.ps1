@@ -64,6 +64,7 @@ function Write-Log {
         Original from the internet (unsure of exact source)
         Updated 2019-04-13 by Andy DLP
 #>
+    [CmdletBinding()]
     param(
     [parameter(Mandatory=$true,
                ValueFromPipeline = $true,
@@ -630,6 +631,193 @@ function Get-GPOChanges {
     end {
     }
 }
+
+function Format-HTMLTable {
+    <#
+        .SYNOPSIS
+            Format HTML table
+        
+        .DESCRIPTION
+            Format HTML table with conditonal formatting
+        
+        .PARAMETER Data
+            The data to format
+        
+        .PARAMETER Category
+            The category of the data
+        
+        .PARAMETER ConditionalFormatting
+            The conditional formatting
+        
+        .EXAMPLE
+            PS C:\> Format-HTMLTable -Data (Get-Service) -Category 'DFSRBacklogs' -ConditionalFormatting $CF
+        
+        .NOTES
+            Updated 2019-04-14 by Andy DLP
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true,
+                    Position = 1)]
+        [Object[]]$Data,
+        [parameter(Mandatory=$true,
+                    Position = 2)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Category,
+        [parameter(Mandatory=$false,
+                    Position = 3)]
+        [ValidateNotNull()]
+        [hashtable[]]$ConditionalFormatting = @{}
+    )
+
+    $UniqueProperties = @()
+    foreach ($Item in $Data) {
+        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique
+    $inc = 1
+    $Data | ForEach-Object -Process {
+        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+        $inc++
+    }
+    [string]$stringOut = $Data | Select-Object -Property (@('Id') + $UniqueProperties) | ConvertTo-Html -Fragment
+    [xml]$frag = $stringOut
+    Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+    $MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Category }
+    foreach ($filter in $MatchingFilters) {
+        for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+            $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+            Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+            Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
+            Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
+            $prop = $Filter.Property
+            $ActualValue = ($Data | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
+            Write-Verbose "Actual value: $($ActualValue | Out-String)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
+            Write-Verbose "Actual type: $($ActualValue.GetType())"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Actual type: $($ActualValue.GetType())"
+            Write-Verbose "FilterValue: $($Filter.Value | Out-String)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($Filter.Value | Out-String)"
+            $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+            Write-Verbose "Code string: $str"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
+            $ColourCode = [Scriptblock]::Create($str)
+            $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+            Write-Verbose "Code return value: $Return"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
+            if ($Return -eq $true) {
+                $class = $frag.CreateAttribute("class")
+                $class.value = "alert"
+                $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+            } # return true
+        } # for each row
+    } # foreach
+    return ("<H2>$Category</H2>" + $frag.InnerXml)
+} # function format HTML table
+
+function Select-Data {
+    <#
+        .SYNOPSIS
+            Format HTML table
+        
+        .DESCRIPTION
+            Format HTML table with conditonal formatting
+        
+        .PARAMETER Data
+            The data to format
+        
+        .PARAMETER Category
+            The category of the data
+        
+        .PARAMETER ConditionalFormatting
+            The conditional formatting
+        
+        .NOTES
+            Updated 2019-04-14 by Andy DLP
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true,
+                    Position = 1)]
+        [Object[]]$Data,
+        [parameter(Mandatory=$true,
+                    Position = 2)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Category,
+        [parameter(Mandatory=$false,
+                    Position = 3)]
+        [ValidateNotNull()]
+        [hashtable[]]$DefaultFilters = @{}
+    )
+
+    $UniqueProperties = @()
+    foreach ($Item in $Data) {
+        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
+    Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
+    foreach ($Property in $UniqueProperties) {
+        $Frag = $null
+        $info = $Data | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+        $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Category }
+        # Filter the data as described in the filters defined above
+        foreach ($filter in $MatchingFilters) {
+            Write-Verbose "Filter: $($filter | Out-String)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
+            switch ($filter.type) {
+                'Property' { 
+                    if ($filter.value -is [array]) {
+                        [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
+                    } else {
+                        [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
+                    }
+                    $FilterScript = [Scriptblock]::Create($str)
+                    $info = $info | Where-Object $FilterScript -ErrorAction Continue
+                }
+                'Display' { 
+                    $SelectSplat = @{}
+                    if ($Filter.Action -eq 'Include') {
+                        $SelectSplat.Add('Property',$Filter.Properties)
+                    } elseif ($filter.Action -eq 'Exclude') {
+                        $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
+                    } else {
+                        Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+                        Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
+                    }
+                    $SortSplat = @{
+                        Property = $Filter.SortingProperty
+                    }
+                    if ($Filter.SortingType -eq 'Ascending') {
+                        # Normal behaviour
+                    } elseif ($Filter.sortingType -eq 'Descending') {
+                        $SortSplat.Add('Descending',$true)
+                    } else {
+                        Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                        Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                    }
+                    $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
+                }
+                'Hidden' { 
+                    $info = $null
+                }
+                Default {
+                    # Filter nothing
+                    Write-Warning "Failed to filter with wrong type $($Filter.Type)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
+                }
+            } # switch filter type
+        }# foreach filter
+        if ($null -ne $info) {
+
+            $fragments = $fragments + (Format-HTMLTable -Data $info -ConditionalFormatting $ConditionalFormatting -Category $Property)
+
+        } # not null info
+    } # foreach property
+} # function format HTML table
+
 
 # END DEFINE FUNCTIONS
 ########################################################
@@ -1557,7 +1745,6 @@ body {
 	max-width: 85%;
 }
 
- 
 table {
 	border-collapse: collapse;
 	border: 1px black solid;
@@ -1676,95 +1863,13 @@ foreach ($domain in $AllDomainInfo) {
 }
 
 # DC Info fragments
-#$fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
-$inc = 1
-# all objects have the same properties so just use the first
-$Properties = ($AllDCInfo[0].PSObject.Properties.name)
-$AllDCInfo | ForEach-Object -Process {
-    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
-    $inc++
-}
-[string]$stringOut = $AllDCInfo | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
-[xml]$frag = $stringOut
-Write-verbose "$stringOut"
-$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'Domain Controllers' }
-foreach ($filter in $MatchingFilters) {
-    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-        $prop = $Filter.Property
-        $ActualValue = ($AllDCInfo | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
-        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-        $ColourCode = [Scriptblock]::Create($str)
-        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-        if ($Return -eq $true) {
-            $class = $frag.CreateAttribute("class")
-            $class.value = "alert"
-            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-        } # return true
-    } # for each row
-} # foreach
-$fragments = $fragments + ("<H2>Domain Controllers</H2>" + $frag.InnerXml)
+$fragments = $fragments + (Format-HTMLTable -Data $AllDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Domain Controllers')
 
 # DC diag fragments
-$inc = 1
-# all objects have the same properties so just use the first
-$Properties = ($DCDiagResults[0].PSObject.Properties.name)
-$DCDiagResults | ForEach-Object -Process {
-    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
-    $inc++
-}
-[string]$stringOut = $DCDiagResults | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
-[xml]$frag = $stringOut
-Write-verbose "$stringOut"
-$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'DCDiag Results' }
-foreach ($filter in $MatchingFilters) {
-    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-        $prop = $Filter.Property
-        $ActualValue = ($DCDiagResults | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
-        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-        $ColourCode = [Scriptblock]::Create($str)
-        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-        if ($Return -eq $true) {
-            $class = $frag.CreateAttribute("class")
-            $class.value = "alert"
-            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-        } # return true
-    } # for each row
-} # foreach
-$fragments = $fragments + ("<H2>DCDiag Results</H2>" + $frag.InnerXml)
+$fragments = $fragments + (Format-HTMLTable -Data $DCDiagResults -ConditionalFormatting $ConditionalFormatting -Category 'DCDiag Results')
 
 # DFSR fragments
-$inc = 1
-# all objects have the same properties so just use the first
-$Properties = ($AllDCBacklogs[0].PSObject.Properties.name)
-$AllDCBacklogs | ForEach-Object -Process {
-    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
-    $inc++
-}
-[string]$stringOut = $AllDCBacklogs | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
-[xml]$frag = $stringOut
-Write-verbose "$stringOut"
-$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'SYSVOL Backlog' }
-foreach ($filter in $MatchingFilters) {
-    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-        $prop = $Filter.Property
-        $ActualValue = ($AllDCBacklogs | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
-        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-        $ColourCode = [Scriptblock]::Create($str)
-        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-        if ($Return -eq $true) {
-            $class = $frag.CreateAttribute("class")
-            $class.value = "alert"
-            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-        } # return true
-    } # for each row
-} # foreach
-$fragments = $fragments + ("<H2>SYSVOL Backlog</H2>" + $frag.InnerXml + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
-
-
-
+$fragments = $fragments + ((Format-HTMLTable -Data $AllDCBacklogs -ConditionalFormatting $ConditionalFormatting -Category 'SYSVOL Backlog') + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
 
 if ($FailedDCInfo.Count -gt 0) {
@@ -1790,13 +1895,10 @@ Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
     $Frag = $null
+
+    # select this removed
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
     $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
-    $inc = 1
-    $info | ForEach-Object -Process {
-        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
-        $inc++
-    }
     # Filter the data as described in the filters defined above
     foreach ($filter in $MatchingFilters) {
         Write-Verbose "Filter: $($filter | Out-String)"
@@ -1814,7 +1916,7 @@ foreach ($Property in $UniqueProperties) {
             'Display' { 
                 $SelectSplat = @{}
                 if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',(@('Id') + $Filter.Properties))
+                    $SelectSplat.Add('Property',$Filter.Properties)
                 } elseif ($filter.Action -eq 'Exclude') {
                     $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
                 } else {
@@ -1845,58 +1947,9 @@ foreach ($Property in $UniqueProperties) {
         } # switch filter type
     }# foreach filter
     if ($null -ne $info) {
-        Write-Verbose "Property info for $Property`: $($info | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property info for $Property`: $($info | Out-String)"
 
-        [string]$stringOut = $info | ConvertTo-Html -Fragment
-        [xml]$frag = $stringOut
-        Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        $MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Property }
-        foreach ($filter in $MatchingFilters) {
-            for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+        $fragments = $fragments + (Format-HTMLTable -Data $info -ConditionalFormatting $ConditionalFormatting -Category $Property)
 
-                Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
-
-
-                Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
-                Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
-
-                $ActualValue = ($info | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) })."$($Filter.Property)"
-                Write-Verbose "Actual value: $($ActualValue | Out-String)"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
-
-                Write-Verbose "Actual type: $($ActualValue.GetType())"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Actual type: $($ActualValue.GetType())"
-
-                Write-Verbose "FilterValue: $($Filter.Value | Out-String)"
-                Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($Filter.Value | Out-String)"
-
-                $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-
-                Write-Verbose "Code string: $str"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
-
-                $ColourCode = [Scriptblock]::Create($str)
-                $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-
-                Write-Verbose "Code return value: $Return"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
-
-                if ($Return -eq $true) {
-                    $class = $frag.CreateAttribute("class")
-                    $class.value = "alert"
-                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-
-                    Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader].InnerText)"
-                    Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader].InnerText)"
-                }
-            } # for every row in HTML table
-        } # foreach colour
-
-        $fragments = $fragments + ("<H2>$Property</H2>" + $frag.InnerXml)
     } # not null info
 } # foreach property
 $fragments = $fragments + "</div>"
