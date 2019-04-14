@@ -1095,9 +1095,9 @@ foreach ($DC in $AllDomainControllersPS) {
                     LastBoot = Get-Date -Date ($OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)) -Format 'MM/dd/yyyy HH:mm:ss'
                     IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                     IsGC = $args[0].IsGlobalCatalog
-                    NTDSService = (Get-Service -Name 'NTDS').Status
-                    NetlogonService = (Get-Service -Name 'Netlogon').Status
-                    DNSService = (Get-Service -Name 'DNS').Status
+                    NTDSService = (Get-Service -Name 'NTDS' | Select-Object -ExpandProperty Status).ToString()
+                    NetlogonService = (Get-Service -Name 'Netlogon' | Select-Object -ExpandProperty Status).ToString()
+                    DNSService = (Get-Service -Name 'DNS' | Select-Object -ExpandProperty Status).ToString()
                     IsServerCore = $IsServerCore
                 }
                 foreach ($Disk in $DiskInfo) {
@@ -1691,15 +1691,11 @@ $MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Cate
 foreach ($filter in $MatchingFilters) {
     for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
         $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-        Write-verbose "$ColumnHeader"
-        $ActualValue = ($AllDCInfo | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) })."$($Filter.Property)"
-        Write-verbose $ActualValue
+        $prop = $Filter.Property
+        $ActualValue = ($AllDCInfo | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
         $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
-        Write-verbose "$str"
         $ColourCode = [Scriptblock]::Create($str)
-        Write-verbose "$ColourCode"
         $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-        Write-verbose "$Return"
         if ($Return -eq $true) {
             $class = $frag.CreateAttribute("class")
             $class.value = "alert"
@@ -1707,14 +1703,69 @@ foreach ($filter in $MatchingFilters) {
         } # return true
     } # for each row
 } # foreach
-Write-verbose $frag.InnerXml
 $fragments = $fragments + ("<H2>Domain Controllers</H2>" + $frag.InnerXml)
 
 # DC diag fragments
-$fragments = $fragments + ($DCDiagResults | ConvertTo-Html -Fragment -PreContent "<H2>DCDiag Results</H2>")
+$inc = 1
+# all objects have the same properties so just use the first
+$Properties = ($DCDiagResults[0].PSObject.Properties.name)
+$DCDiagResults | ForEach-Object -Process {
+    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+    $inc++
+}
+[string]$stringOut = $DCDiagResults | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
+[xml]$frag = $stringOut
+Write-verbose "$stringOut"
+$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'DCDiag Results' }
+foreach ($filter in $MatchingFilters) {
+    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+        $prop = $Filter.Property
+        $ActualValue = ($DCDiagResults | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
+        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+        $ColourCode = [Scriptblock]::Create($str)
+        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+        if ($Return -eq $true) {
+            $class = $frag.CreateAttribute("class")
+            $class.value = "alert"
+            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+        } # return true
+    } # for each row
+} # foreach
+$fragments = $fragments + ("<H2>DCDiag Results</H2>" + $frag.InnerXml)
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+$inc = 1
+# all objects have the same properties so just use the first
+$Properties = ($AllDCBacklogs[0].PSObject.Properties.name)
+$AllDCBacklogs | ForEach-Object -Process {
+    Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+    $inc++
+}
+[string]$stringOut = $AllDCBacklogs | Select-Object -Property (@('Id') + $Properties) | ConvertTo-Html -Fragment
+[xml]$frag = $stringOut
+Write-verbose "$stringOut"
+$MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq 'SYSVOL Backlog' }
+foreach ($filter in $MatchingFilters) {
+    for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+        $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+        $prop = $Filter.Property
+        $ActualValue = ($AllDCBacklogs | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
+        $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+        $ColourCode = [Scriptblock]::Create($str)
+        $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+        if ($Return -eq $true) {
+            $class = $frag.CreateAttribute("class")
+            $class.value = "alert"
+            $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+        } # return true
+    } # for each row
+} # foreach
+$fragments = $fragments + ("<H2>SYSVOL Backlog</H2>" + $frag.InnerXml + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+
+
+
+
 
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'

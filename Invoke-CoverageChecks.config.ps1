@@ -132,7 +132,37 @@ $ConditionalFormatting = @(
         Category = 'Domain Controllers'
         Property = 'NTDSService'
         Comparison = '-eq'
-        Value = 'Running'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'DNSService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'SYSVOLAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SYSVOL Backlog'
+        Property = 'BacklogFileCount'
+        Comparison = '-ne'
+        Value = 0
     },
     @{
         Category = 'Disks'
@@ -197,16 +227,6 @@ $VCentersAndESXIHosts = @()
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
 $IgnoredServers = @(
-    'DC-1',
-    'JENKINS',
-    'PSTEST',
-    'SCCM-01',
-    'PASSWORDSTATE',
-    'SCVMM',
-    'GLR-WIN1',
-    'SQL-01',
-    'HV-01',
-    'SRV1'
 )
 
 # Change to $true to enable reporting sending via email
