@@ -881,6 +881,38 @@ if ($null -eq $DefaultFilters) {
         Value = 100 # only show disks at 100% of less free space (example)
     },
     @{
+        Category = 'VMSnapshots'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','ParentSnapshot','Description','Created','PowerState','VM','SizeGB','IsCurrent','IsReplaySupported')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'LastEvents'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','IpAddress','UserAgent','CreatedTime','UserName','LoginTime','ChainId','FullFormattedMessage','To','NewStatus')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'VMs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','PowerState','NumCpu','CoresPerSocket','MemoryGB','ProvisionedSpaceGB','UsedSpaceGB','Notes','Folder','Version')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Datastores'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','Datacenter','CapacityGB','FreeSpaceGB','Accessible','Type','State','FileSystemVersion')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
         Category = 'DFSRBacklogs'
         Type = 'Display'
         Action = 'Include'
@@ -894,6 +926,22 @@ if ($null -eq $DefaultFilters) {
         Action = 'Include'
         Properties = @('ComputerName','Volume','TotalSize','FreeSpace','PercentFree')
         SortingProperty = 'PercentFree'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Unresponsive Domain Controllers'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','ServerResponding','ServerWSManrunning')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Unresponsive servers'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Error','ServerResponding','ServerWSManrunning','Ignored')
+        SortingProperty = 'ComputerName'
         SortingType = 'Ascending'
     },
     @{
@@ -979,220 +1027,103 @@ if ($null -eq $ConditionalFormatting) {
     Write-Warning "ConditionalFormatting variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "ConditionalFormatting variable not found, using system defaults"
     $ConditionalFormatting = @(
-        @{
-            Category = 'DCDiag Results'
-            Property = 'Connectivity'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'Advertising'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'FrsEvent'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'DFSREvent'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'SysVolCheck'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'KccEvent'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'KnowsOfRoleHolders'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'MachineAccount'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'NCSecDesc'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'NetLogons'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'ObjectsReplicated'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'Replications'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'RidManager'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'Services'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'SystemLog'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'VerifyReferences'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'CheckSDRefDom'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'CrossRefValidation'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'LocatorCheck'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-        @{
-            Category = 'DCDiag Results'
-            Property = 'Intersite'
-            Comparison = '-eq'
-            Value = 'Failed'
-        },
-
-
-
-        @{
-            Category = 'Domain Controllers'
-            Property = 'NTDSService'
-            Comparison = '-eq'
-            Value = 'Stopped'
-        },
-        @{
-            Category = 'Domain Controllers'
-            Property = 'NetlogonService'
-            Comparison = '-eq'
-            Value = 'Stopped'
-        },
-        @{
-            Category = 'Domain Controllers'
-            Property = 'DNSService'
-            Comparison = '-eq'
-            Value = 'Stopped'
-        },
-        @{
-            Category = 'Domain Controllers'
-            Property = 'NetlogonAccessible'
-            Comparison = '-eq'
-            Value = $false
-        },
-        @{
-            Category = 'Domain Controllers'
-            Property = 'SYSVOLAccessible'
-            Comparison = '-eq'
-            Value = $false
-        },
-        @{
-            Category = 'SYSVOL Backlog'
-            Property = 'BacklogFileCount'
-            Comparison = '-ne'
-            Value = 0
-        },
-        @{
-            Category = 'Disks'
-            Property = 'PercentFree'
-            Comparison = '-lt'
-            Value = 50
-        },
-        @{
-            Category = 'NonStandardScheduledTasks'
-            Property = 'Run As User'
-            Comparison = '-match'
-            Value = 'administrator'
-        },
-        @{
-            Category = 'NonStandardServices'
-            Property = 'State'
-            Comparison = '-eq'
-            Value = "Stopped"
-        },
-        @{
-            Category = 'NonStandardServices'
-            Property = 'StartName'
-            Comparison = '-match'
-            Value = 'administrator'
-        },
-        @{
-            Category = 'PendingReboot'
-            Property = 'RebootPending'
-            Comparison = '-eq'
-            Value = $true
-        },
-        @{
-            Category = 'ExpiredSoonCertificates'
-            Property = 'NotBefore'
-            Comparison = '-gt'
-            Value = (Get-Date)
-        },
-        @{
-            Category = 'ExpiredSoonCertificates'
-            Property = 'NotAfter'
-            Comparison = '-lt'
-            Value = (Get-Date)
-        },
-        @{
-            Category = 'UpdateInfo'
-            Property = 'UpToDate'
-            Comparison = '-eq'
-            Value = $false
-        },
-        @{
-            Category = 'SharedPrinters'
-            Property = 'IsPingable'
-            Comparison = '-eq'
-            Value = $false
-        }
-    )
+    @{
+        Category = 'DCDiag Results'
+        Property = 'FailedTests'
+        Comparison = '-ne'
+        Value = $null
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NTDSService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'DNSService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'SYSVOLAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SYSVOL Backlog'
+        Property = 'BacklogFileCount'
+        Comparison = '-ne'
+        Value = 0
+    },
+    @{
+        Category = 'Disks'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 50
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Property = 'Run As User'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'State'
+        Comparison = '-eq'
+        Value = "Stopped"
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'StartName'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'PendingReboot'
+        Property = 'RebootPending'
+        Comparison = '-eq'
+        Value = $true
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotBefore'
+        Comparison = '-gt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotAfter'
+        Comparison = '-lt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'UpdateInfo'
+        Property = 'UpToDate'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SharedPrinters'
+        Property = 'IsPingable'
+        Comparison = '-eq'
+        Value = $false
+    }
+)
 }
 Write-Verbose ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
 Write-Log -Log $LogFilePath -Type INFO -Text ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
