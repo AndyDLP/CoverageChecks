@@ -1467,6 +1467,8 @@ foreach ($DC in $AllDomainControllersPS) {
                 $DCDIAGResult = New-Object System.Object
                 $DCDIAGStr = dcdiag.exe
                 $DCDIAGResult | Add-Member -name ComputerName -Value $env:COMPUTERNAME -Type NoteProperty -Force
+                $PassedStrings = @()
+                $FailedStrings = @()
                 Foreach ($Entry in $DCDIAGStr) {
                     Switch -Regex ($Entry) {
                         "Starting" {
@@ -1478,12 +1480,19 @@ foreach ($DC in $AllDomainControllersPS) {
                     } # switch
 
                     if (($TestName -ne $null) -and ($TestStatus -ne $null)) {
-                        $DCDIAGResult | Add-Member -Type NoteProperty -name $($TestName.Trim()) -Value $TestStatus -Force
+                        if ($TestStatus -eq 'Passed') { $PassedStrings = $PassedStrings + $($TestName.Trim()) } else { $FailedStrings = $FailedStrings + $($TestName.Trim()) }
                     } # if not null
                 } # foreach line in DCDIAG output
+                if ($PassedStrings.Count -gt 0) {
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'PassedTests' -Value $PassedStrings -Force
+                }
+                if ($FailedStrings.Count -gt 0) {
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'FailedTests' -Value $FailedStrings -Force
+                }
                 $DCDIAGResult
             } # scriptblock
-            $DCdiag = $DCDiag | Select-Object -Property ComputerName,Connectivity,Advertising,FrsEvent,DFSREvent,SysVolCheck,KccEvent,KnowsOfRoleHolders,MachineAccount,NCSecDesc,NetLogons,ObjectsReplicated,Replications,RidManager,Services,SystemLog,VerifyReferences,CheckSDRefDom,CrossRefValidation,LocatorCheck,Intersite
+            $DCdiag = $DCDiag | Select-Object -Property ComputerName,PassedTests,FailedTests
+            $DCDiagOutputObject
             $DCDiagResults = $DCDiagResults + $DCDiag
             
 
