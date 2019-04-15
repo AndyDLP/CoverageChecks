@@ -677,10 +677,10 @@ function Format-HTMLTable {
     $UniqueProperties = $UniqueProperties | Select-Object -Unique
     $inc = 1
     $Data | ForEach-Object -Process {
-        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'Id' -Value $inc -Force
+        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'I' -Value $inc -Force
         $inc++
     }
-    [string]$stringOut = $Data | Select-Object -Property (@('Id') + $UniqueProperties) | ConvertTo-Html -Fragment
+    [string]$stringOut = $Data | Select-Object -Property (@('I') + $UniqueProperties) | ConvertTo-Html -Fragment
     [xml]$frag = $stringOut
     Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
     Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
@@ -693,7 +693,7 @@ function Format-HTMLTable {
             Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
             Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
             $prop = $Filter.Property
-            $ActualValue = ($Data | Where-Object -FilterScript { $_.Id -eq ($frag.table.tr[$i].td[0]) }).$prop
+            $ActualValue = ($Data | Where-Object -FilterScript { $_.I -eq ($frag.table.tr[$i].td[0]) }).$prop
             Write-Verbose "Actual value: $($ActualValue | Out-String)"
             Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
             Write-Verbose "Actual type: $($ActualValue.GetType())"
@@ -771,7 +771,7 @@ function Select-Data {
                 if ($Filter.Action -eq 'Include') {
                     $SelectSplat.Add('Property',$Filter.Properties)
                 } elseif ($filter.Action -eq 'Exclude') {
-                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
+                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'I' }))
                 } else {
                     Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
                     Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
@@ -1484,10 +1484,12 @@ foreach ($DC in $AllDomainControllersPS) {
                     } # if not null
                 } # foreach line in DCDIAG output
                 if ($PassedStrings.Count -gt 0) {
-                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'PassedTests' -Value $PassedStrings -Force
+                    $PassedStrings = $PassedStrings | Select-Object -Unique
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'PassedTests' -Value ($PassedStrings -join ', ') -Force
                 }
                 if ($FailedStrings.Count -gt 0) {
-                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'FailedTests' -Value $FailedStrings -Force
+                    $PassedStrings = $FailedStrings | Select-Object -Unique
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'FailedTests' -Value ($FailedStrings -join ', ') -Force
                 }
                 $DCDIAGResult
             } # scriptblock
@@ -1852,12 +1854,20 @@ foreach ($Server in $ServerList) {
 #########################################################
 # BEGIN VMWARE
 
+$VMWareInfo = @()
 if ($VCentersAndESXIHosts.count -gt 0) {
+    Write-Verbose "Beginning info gathering from VMWare servers: $($VCentersAndESXIHosts -join ', ')"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Beginning info gathering from VMWare servers: $($VCentersAndESXIHosts -join ', ')"
+    $PowerCLICfg = Get-PowerCLIConfiguration -Scope Session
+    # Set friendly powercli config
+    Set-PowerCLIConfiguration -ProxyPolicy UseSystemProxy -DefaultVIServerMode Multiple -InvalidCertificateAction Ignore -ParticipateInCeip $false -CEIPDataTransferProxyPolicy UseSystemProxy -DisplayDeprecationWarnings $true -WebOperationTimeoutSeconds 600 -Confirm:$false -Scope Session | Out-Null
     $ConnectedVMwareList = @()
     $FailedVMwareList = @()
     foreach ($Server in $VCentersAndESXIHosts) {
         $CanPing = Test-Connection -ComputerName $Server -Quiet -Count 2
         if ($CanPing -eq $true) {
+            Write-Verbose "Ping successful to: $server"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Ping successful to: $server"
             try {
                 # TODO: Add export + import of credentials for easy re-use (run as service account)
                 # Below works for same user on same machine only (encrypts the password only) - Run as the user running the script not the principal
@@ -1865,19 +1875,40 @@ if ($VCentersAndESXIHosts.count -gt 0) {
                 # $ImportedCred = Import-CliXml .\credential.xml
                 $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
                 $ConnectedVMwareList += $VIServer
-
-                # gather data
-                $VMList = Get-VM -Server $VIServer
-                $SnapshotList = $VMList | Get-Snapshot -Server $VIServer
-                $Datastores = Get-Datastore -Server $VIServer
-                $ESXEvents = Get-VIEvent -Server $VIServer
-
-            }
+                $VMList = Get-VM -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $SnapshotList = $VMList | Get-Snapshot -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $Datastores = Get-Datastore -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $ESXEvents = Get-VIEvent -Server $VIServer | Sort-Object -Property CreatedTime -Descending | Select-Object -First 20 | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $VMWareServer = [PSCustomObject]@{
+                    VMs = $VMList
+                    VMSnapshots = $SnapshotList
+                    Datastores = $Datastores
+                    LastEvents = $ESXEvents
+                }
+                $VMWareInfo = $VMWareInfo + $VMWareServer
+            } # try
             catch {
-                $FailedVMwareList += $Server
+                Write-Error "Error with server: $server"
+                Write-Log -Log $LogFilePath -Type ERROR -Text "Error with server: $server"
+                $FailedVMwareList += [PSCustomObject]@{
+                    Server = $Server
+                    Error = $_
+                    CanPing = $true
+                }
             }
-        } # canping
+        } else {
+            Write-Error "Ping unsuccessful to: $server"
+            Write-Log -Log $LogFilePath -Type ERROR -Text "Ping unsuccessful to: $server"
+            $FailedVMwareList += [PSCustomObject]@{
+                Server = $Server
+                Error = $null
+                CanPing = $false
+            }
+        } # else can ping
     } # foreach vmware server
+    
+    # Set it back to how it was
+    Set-PowerCLIConfiguration -ProxyPolicy ($PowerCLICfg.ProxyPolicy) -DefaultVIServerMode ($PowerCLICfg.DefaultVIServerMode) -InvalidCertificateAction ($PowerCLICfg.InvalidCertificateAction) -ParticipateInCeip ($PowerCLICfg.ParticipateInCeip) -CEIPDataTransferProxyPolicy ($PowerCLICfg.CEIPDataTransferProxyPolicy) -DisplayDeprecationWarnings ($PowerCLICfg.DisplayDeprecationWarnings) -WebOperationTimeoutSeconds ($PowerCLICfg.WebOperationTimeoutSeconds) -Confirm:$false -Scope Session | Out-Null
 } # vmware servers specified
 
 # END VMWARE
@@ -2026,18 +2057,46 @@ $fragments = $fragments + (Format-HTMLTable -Data $DCDiagResults -ConditionalFor
 $AllDCBacklogs = Select-Data -Data $AllDCBacklogs -Category 'SYSVOL Backlog' -DefaultFilters $DefaultFilters
 $fragments = $fragments + ((Format-HTMLTable -Data $AllDCBacklogs -ConditionalFormatting $ConditionalFormatting -Category 'SYSVOL Backlog') + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
-
+# Failed DCs
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
     $FailedDCInfo = Select-Data -Data $FailedDCInfo -Category 'Unresponsive Domain Controllers' -DefaultFilters $DefaultFilters
     $fragments = $fragments + (Format-HTMLTable -Data $FailedDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive Domain Controllers')
 }
 
+# Failed servers
 if ($FailedServers.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
     $FailedServers = Select-Data -Data $FailedServers -Category 'Unresponsive servers' -DefaultFilters $DefaultFilters
     $fragments = $fragments + (Format-HTMLTable -Data $FailedServers -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive servers')
 }
+
+# VMWare Vcenter fragments
+if ($VCentersAndESXIHosts.count -gt 0) {
+    $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $fragments = $fragments + '<H1>VMWare Infrastructure</H1>'
+
+    # unresponsive servers
+    if ($FailedVMwareList.count -gt 0) {
+        $FailedDCInfo = Select-Data -Data $FailedVMwareList -Category 'Unresponsive VMWare Servers' -DefaultFilters $DefaultFilters
+        $fragments = $fragments + (Format-HTMLTable -Data $FailedVMwareList -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive VMWare Servers')
+    }
+    
+    $UniqueProperties = @()
+    foreach ($Item in $VMWareInfo) {
+        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
+    Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
+    foreach ($Property in $UniqueProperties) {
+        $info = $VMWareInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+        $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
+        if ($null -ne $FilteredInfo) {
+            $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
+        } # not null info
+    } # foreach property
+} # VMWare Servers specified
 
 $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
 $fragments = $fragments + '<H1>All Server Information</H1>'

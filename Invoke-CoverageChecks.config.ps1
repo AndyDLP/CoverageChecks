@@ -31,6 +31,38 @@ $DefaultFilters = @(
         Value = 100 # only show disks at 100% of less free space (example)
     },
     @{
+        Category = 'VMSnapshots'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','ParentSnapshot','Description','Created','PowerState','VM','SizeGB','IsCurrent','IsReplaySupported')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'LastEvents'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','IpAddress','UserAgent','CreatedTime','UserName','LoginTime','ChainId','FullFormattedMessage','To','NewStatus')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'VMs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','PowerState','NumCpu','CoresPerSocket','MemoryGB','ProvisionedSpaceGB','UsedSpaceGB','Notes','Folder','Version')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Datastores'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','Datacenter','CapacityGB','FreeSpaceGB','Accessible','Type','State','FileSystemVersion')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
         Category = 'DFSRBacklogs'
         Type = 'Display'
         Action = 'Include'
@@ -244,7 +276,8 @@ $ConditionalFormatting = @(
 # Specify a list of VCenter servers or ESXI hosts to gather information from
 # It is assumed that AD authentication has been enabled for the user running this script
 # TODO: Add option to specify different credentials (Save to CLIXML?)
-$VCentersAndESXIHosts = @()
+$VCentersAndESXIHosts = @(
+)
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
 $IgnoredServers = @(
