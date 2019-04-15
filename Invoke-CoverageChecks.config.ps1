@@ -126,8 +126,130 @@ Possible values for conditions:
  - Value           = Specify the value to filter against
 
 #>
-
 $ConditionalFormatting = @(
+    @{
+        Category = 'DCDiag Results'
+        Property = 'Connectivity'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'Advertising'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'FrsEvent'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'DFSREvent'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'SysVolCheck'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'KccEvent'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'KnowsOfRoleHolders'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'MachineAccount'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'NCSecDesc'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'NetLogons'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'ObjectsReplicated'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'Replications'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'RidManager'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'Services'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'SystemLog'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'VerifyReferences'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'CheckSDRefDom'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'CrossRefValidation'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'LocatorCheck'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+    @{
+        Category = 'DCDiag Results'
+        Property = 'Intersite'
+        Comparison = '-eq'
+        Value = 'Failed'
+    },
+
+
+
     @{
         Category = 'Domain Controllers'
         Property = 'NTDSService'
@@ -227,6 +349,7 @@ $VCentersAndESXIHosts = @()
 
 # A comma separated list of servers names (strings) that will not be target for information gathering
 $IgnoredServers = @(
+    "BC-LUX-02",	"BC-LUX-DC01",	"BC-NEWYORK-DC1",	"BC-HAMBURG-DC1",	"BC-GUER-DC02",	"BC-SASDC-DC01",	"BC-LONDON-DC01",	"BC-LONDON-AP2",	"BC-LONDON-AP02",	"BC-LONDON-DC1",	"BC-LONDON-AP1",	"BC-LONDON-TS01",	"BC-LONDON-TS02",	"BC-LONDON-TS04",	"BC-LONDON-TS03",	"INTRANET01",	"BC-HAMBURG-RIS",	"BC-STAGING-01",	"BC-STAGING-DE",	"BC-STAGING-IT",	"BC-STAGING-CH",	"BC-LONDON-10",	"BC-SAS-01",	"BC-PARIS-RE",	"BC-LUX-03",	"BC-INTRANET-01",	"BC-GUERNSEY-DC",	"BC-PARIS-DCTEMP",	"BC-PARIS-BB",	"BC-PARIS-DC",	"BC-HAMBURG-02",	"BC-HAMBURG-BB",	"BC-PARIS-01",	"BC-LUX-DC",	"BC-PARIS-02",	"BC-HAMBURG-TS1",	"BC-GUERNSEY-01",	"BC-LONDON-DEV3",	"BC-PARIS-AP1",	"BC-LONDON-07",	"BC-LONDON-AP01",	"BC-LONDON-DEV1",	"BC-LUX-DC1",	"BC-LONDON-DC2",	"BC-LUX-AP3",	"BC-LUX-AP2",	"BC-LONDON-WEB1",	"BC-PARIS-EX2",	"BC-PARIS-EX1",	"BC-LONDON-EX2",	"BC-LONDON-AP4",	"BC-LONDON-AP5",	"BC-LONDON-EX1",	"BC-LONDON-AP7",	"BC-LONDON-04",	"BC-PARIS-BB1",	"BC-LONDON-EV1",	"BC-PARIS-AP3",	"BC-LONDON-AP6",	"BC-NEWYORK-FP1",	"BC-HAMBURG-AP3",	"BC-HAMBURG-AP1",	"BC-LONDON-11",	"BC-LUX-BE01",	"BC-LONDON-PRXY",	"BC-GUER-VCNTR",	"BC-LONDON-BE01",	"BC-PARIS-AP2",	"BC-LONDON-EX02",	"BC-LONDON-EX01",	"BC-LONDON-VCNTR",	"BC-HAMBURG-AP2",	"BC-LUX-EXC02",	"BC-LONDON-CRM13",	"BC-NY-EXC01",	"BC-NEWYORK-AP1",	"BC-SRV_LDN_CRM",	"BC-HAMBURG-EX1",	"BC-LUX-AP1",	"DAG-EXC-US",	"BC-LUX-SRM",	"BC-LUX-EXC01",	"BC-SASDC-EXC01",	"BC-LONDON-SCCM",	"BC-LONDON-BES",	"BC-SQL-TEST",	"BC-LONDON-TS00",	"BC-PARIS-BB2",	"BC-NEWYORK-EX1",	"BC-SASDC-BE01",	"BC-HAMBURG-BU01",	"BC-GUERNSEY-AP1",	"BC-GUER-BE01",	"BC-LONDON-AP05",	"BC-LONDON-05",	"BC-LONDON-EVDA",	"BC-LONDON-AP3",	"BC-LONDON-AP03",	"BC-LONDON-DC02",	"BC-LONDON-NXPSE",	"BC-LONDON-EMS1",	"BC-HAMBURG-EMS1",	"BC-HAMBURG-DC2",	"BC-GUER-SCDP",	"BC-LUX-FP01",	"BC-HAMBURG-AP7",	"BC-GUER-CCH",	"BC-LUX-BE1",	"BC-HAMBURG-SRM",	"BCP-LON-UBA01",	"BCP-GUE-DEVEFRO",	"BC-LONDON-MDM1",	"BC-NEWYORK-DC3",	"BC-LONDON-CAS1",	"BC-HAMBURG-AR1",	"BC-LONDON-08",	"BC-LONDON-VRNS",	"BC-LONDON-VRNSA",	"BC-LONDON-ESM",	"BC-GUER-DB01",	"BC-LONDON-AP04",	"BC-LONDON-DB01",	"BC-HAMBURG-AP5",	"BC-HAMBURG-AR2",	"BCP-GUE-DEVDB01",	"BC-NEWYORK-AP3",	"BC-HAMBURG-AP6",	"BC-HAMBURG-BU2",	"BC-NEWYORK-SRM",	"BC-LONDON-MDM2",	"BC-SASDC-SRMGU",	"BC-GUER-EFRONT",	"BC-LONDON-EV01",	"BC-LONDON-DB02",	"BC-SASDC-SRMLO",	"BC-LONDON-09",	"BC-LUX-EMS1",	"BCP-GUE-ZERTO"
 )
 
 # Change to $true to enable reporting sending via email

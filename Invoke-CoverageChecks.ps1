@@ -726,16 +726,16 @@ function Select-Data {
             Format HTML table with conditonal formatting
         
         .PARAMETER Data
-            The data to format
+            The data to filter
         
         .PARAMETER Category
             The category of the data
         
-        .PARAMETER ConditionalFormatting
-            The conditional formatting
+        .PARAMETER DefaultFilters
+            The filters to apply
         
         .NOTES
-            Updated 2019-04-14 by Andy DLP
+            Updated 2019-04-15 by Andy DLP
     #>
     [CmdletBinding()]
     param(
@@ -752,71 +752,55 @@ function Select-Data {
         [hashtable[]]$DefaultFilters = @{}
     )
 
-    $UniqueProperties = @()
-    foreach ($Item in $Data) {
-        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
-    }
-    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
-    Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
-    Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
-    foreach ($Property in $UniqueProperties) {
-        $Frag = $null
-        $info = $Data | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
-        $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Category }
-        # Filter the data as described in the filters defined above
-        foreach ($filter in $MatchingFilters) {
-            Write-Verbose "Filter: $($filter | Out-String)"
-            Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
-            switch ($filter.type) {
-                'Property' { 
-                    if ($filter.value -is [array]) {
-                        [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
-                    } else {
-                        [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
-                    }
-                    $FilterScript = [Scriptblock]::Create($str)
-                    $info = $info | Where-Object $FilterScript -ErrorAction Continue
+    $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Category }
+    foreach ($filter in $MatchingFilters) {
+        Write-Verbose "Filter: $($filter | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
+        switch ($filter.type) {
+            'Property' { 
+                if ($filter.value -is [array]) {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
+                } else {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
                 }
-                'Display' { 
-                    $SelectSplat = @{}
-                    if ($Filter.Action -eq 'Include') {
-                        $SelectSplat.Add('Property',$Filter.Properties)
-                    } elseif ($filter.Action -eq 'Exclude') {
-                        $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
-                    } else {
-                        Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
-                        Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
-                    }
-                    $SortSplat = @{
-                        Property = $Filter.SortingProperty
-                    }
-                    if ($Filter.SortingType -eq 'Ascending') {
-                        # Normal behaviour
-                    } elseif ($Filter.sortingType -eq 'Descending') {
-                        $SortSplat.Add('Descending',$true)
-                    } else {
-                        Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                        Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                    }
-                    $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
+                $FilterScript = [Scriptblock]::Create($str)
+                $Data = $Data | Where-Object $FilterScript -ErrorAction Continue
+            }
+            'Display' { 
+                $SelectSplat = @{}
+                if ($Filter.Action -eq 'Include') {
+                    $SelectSplat.Add('Property',$Filter.Properties)
+                } elseif ($filter.Action -eq 'Exclude') {
+                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
+                } else {
+                    Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
                 }
-                'Hidden' { 
-                    $info = $null
+                $SortSplat = @{
+                    Property = $Filter.SortingProperty
                 }
-                Default {
-                    # Filter nothing
-                    Write-Warning "Failed to filter with wrong type $($Filter.Type)"
-                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
+                if ($Filter.SortingType -eq 'Ascending') {
+                    # Normal behaviour
+                } elseif ($Filter.sortingType -eq 'Descending') {
+                    $SortSplat.Add('Descending',$true)
+                } else {
+                    Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
                 }
-            } # switch filter type
-        }# foreach filter
-        if ($null -ne $info) {
-
-            $fragments = $fragments + (Format-HTMLTable -Data $info -ConditionalFormatting $ConditionalFormatting -Category $Property)
-
-        } # not null info
-    } # foreach property
-} # function format HTML table
+                $Data = $Data | Select-Object @SelectSplat | Sort-Object @SortSplat
+            }
+            'Hidden' { 
+                $Data = $null
+            }
+            Default {
+                # Filter nothing
+                Write-Warning "Failed to filter with wrong type $($Filter.Type)"
+                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
+            }
+        } # switch filter type
+    }# foreach filter
+    $Data
+} # function Select Data
 
 
 # END DEFINE FUNCTIONS
@@ -995,61 +979,220 @@ if ($null -eq $ConditionalFormatting) {
     Write-Warning "ConditionalFormatting variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "ConditionalFormatting variable not found, using system defaults"
     $ConditionalFormatting = @(
-    @{
-        Category = 'Disks'
-        Property = 'PercentFree'
-        Comparison = '-lt'
-        Value = 50
-    },
-    @{
-        Category = 'NonStandardScheduledTasks'
-        Property = 'Run As User'
-        Comparison = '-match'
-        Value = 'administrator'
-    },
-    @{
-        Category = 'NonStandardServices'
-        Property = 'State'
-        Comparison = '-eq'
-        Value = "Stopped"
-    },
-    @{
-        Category = 'NonStandardServices'
-        Property = 'StartName'
-        Comparison = '-match'
-        Value = 'administrator'
-    },
-    @{
-        Category = 'PendingReboot'
-        Property = 'RebootPending'
-        Comparison = '-eq'
-        Value = $true
-    },
-    @{
-        Category = 'ExpiredSoonCertificates'
-        Property = 'NotBefore'
-        Comparison = '-gt'
-        Value = (Get-Date)
-    },
-    @{
-        Category = 'ExpiredSoonCertificates'
-        Property = 'NotAfter'
-        Comparison = '-lt'
-        Value = (Get-Date)
-    },
-    @{
-        Category = 'UpdateInfo'
-        Property = 'UpToDate'
-        Comparison = '-eq'
-        Value = $false
-    },
-    @{
-        Category = 'SharedPrinters'
-        Property = 'IsPingable'
-        Comparison = '-eq'
-        Value = $false
-    }
-)
+        @{
+            Category = 'DCDiag Results'
+            Property = 'Connectivity'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'Advertising'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'FrsEvent'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'DFSREvent'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'SysVolCheck'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'KccEvent'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'KnowsOfRoleHolders'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'MachineAccount'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'NCSecDesc'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'NetLogons'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'ObjectsReplicated'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'Replications'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'RidManager'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'Services'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'SystemLog'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'VerifyReferences'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'CheckSDRefDom'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'CrossRefValidation'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'LocatorCheck'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+        @{
+            Category = 'DCDiag Results'
+            Property = 'Intersite'
+            Comparison = '-eq'
+            Value = 'Failed'
+        },
+
+
+
+        @{
+            Category = 'Domain Controllers'
+            Property = 'NTDSService'
+            Comparison = '-eq'
+            Value = 'Stopped'
+        },
+        @{
+            Category = 'Domain Controllers'
+            Property = 'NetlogonService'
+            Comparison = '-eq'
+            Value = 'Stopped'
+        },
+        @{
+            Category = 'Domain Controllers'
+            Property = 'DNSService'
+            Comparison = '-eq'
+            Value = 'Stopped'
+        },
+        @{
+            Category = 'Domain Controllers'
+            Property = 'NetlogonAccessible'
+            Comparison = '-eq'
+            Value = $false
+        },
+        @{
+            Category = 'Domain Controllers'
+            Property = 'SYSVOLAccessible'
+            Comparison = '-eq'
+            Value = $false
+        },
+        @{
+            Category = 'SYSVOL Backlog'
+            Property = 'BacklogFileCount'
+            Comparison = '-ne'
+            Value = 0
+        },
+        @{
+            Category = 'Disks'
+            Property = 'PercentFree'
+            Comparison = '-lt'
+            Value = 50
+        },
+        @{
+            Category = 'NonStandardScheduledTasks'
+            Property = 'Run As User'
+            Comparison = '-match'
+            Value = 'administrator'
+        },
+        @{
+            Category = 'NonStandardServices'
+            Property = 'State'
+            Comparison = '-eq'
+            Value = "Stopped"
+        },
+        @{
+            Category = 'NonStandardServices'
+            Property = 'StartName'
+            Comparison = '-match'
+            Value = 'administrator'
+        },
+        @{
+            Category = 'PendingReboot'
+            Property = 'RebootPending'
+            Comparison = '-eq'
+            Value = $true
+        },
+        @{
+            Category = 'ExpiredSoonCertificates'
+            Property = 'NotBefore'
+            Comparison = '-gt'
+            Value = (Get-Date)
+        },
+        @{
+            Category = 'ExpiredSoonCertificates'
+            Property = 'NotAfter'
+            Comparison = '-lt'
+            Value = (Get-Date)
+        },
+        @{
+            Category = 'UpdateInfo'
+            Property = 'UpToDate'
+            Comparison = '-eq'
+            Value = $false
+        },
+        @{
+            Category = 'SharedPrinters'
+            Property = 'IsPingable'
+            Comparison = '-eq'
+            Value = $false
+        }
+    )
 }
 Write-Verbose ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
 Write-Log -Log $LogFilePath -Type INFO -Text ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
@@ -1863,29 +2006,36 @@ foreach ($domain in $AllDomainInfo) {
 }
 
 # DC Info fragments
+$AllDCInfo = Select-Data -Data $AllDCInfo -Category 'Domain Controllers' -DefaultFilters $DefaultFilters
 $fragments = $fragments + (Format-HTMLTable -Data $AllDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Domain Controllers')
 
 # DC diag fragments
+$DCDiagResults = Select-Data -Data $DCDiagResults -Category 'DCDiag Results' -DefaultFilters $DefaultFilters
 $fragments = $fragments + (Format-HTMLTable -Data $DCDiagResults -ConditionalFormatting $ConditionalFormatting -Category 'DCDiag Results')
 
 # DFSR fragments
+$AllDCBacklogs = Select-Data -Data $AllDCBacklogs -Category 'SYSVOL Backlog' -DefaultFilters $DefaultFilters
 $fragments = $fragments + ((Format-HTMLTable -Data $AllDCBacklogs -ConditionalFormatting $ConditionalFormatting -Category 'SYSVOL Backlog') + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
 
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
-    $fragments = $fragments + ($FailedDCInfo | Select-Object -Property ComputerName,ServerResponding,ServerWSManRunning | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive Domain Controllers</H2>')
+    $FailedDCInfo = Select-Data -Data $FailedDCInfo -Category 'Unresponsive Domain Controllers' -DefaultFilters $DefaultFilters
+    $fragments = $fragments + (Format-HTMLTable -Data $FailedDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive Domain Controllers')
 }
 
 if ($FailedServers.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
-    $fragments = $fragments + ($FailedServers | Select-Object -Property ComputerName,Error,ServerResponding,ServerWSManRunning,Ignored | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive servers</H2>')
+    $FailedServers = Select-Data -Data $FailedServers -Category 'Unresponsive servers' -DefaultFilters $DefaultFilters
+    $fragments = $fragments + (Format-HTMLTable -Data $FailedServers -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive servers')
 }
 
 $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
 $fragments = $fragments + '<H1>All Server Information</H1>'
 
 # Server Info fragments
+
+##################################
 $UniqueProperties = @()
 foreach ($ServerInfo in $AllServerInfo) {
     $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
@@ -1894,64 +2044,13 @@ $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
 Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
-    $Frag = $null
-
-    # select this removed
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
-    $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
-    # Filter the data as described in the filters defined above
-    foreach ($filter in $MatchingFilters) {
-        Write-Verbose "Filter: $($filter | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
-        switch ($filter.type) {
-            'Property' { 
-                if ($filter.value -is [array]) {
-                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
-                } else {
-                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
-                }
-                $FilterScript = [Scriptblock]::Create($str)
-                $info = $info | Where-Object $FilterScript -ErrorAction Continue
-            }
-            'Display' { 
-                $SelectSplat = @{}
-                if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',$Filter.Properties)
-                } elseif ($filter.Action -eq 'Exclude') {
-                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'Id' }))
-                } else {
-                    Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
-                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
-                }
-                $SortSplat = @{
-                    Property = $Filter.SortingProperty
-                }
-                if ($Filter.SortingType -eq 'Ascending') {
-                    # Normal behaviour
-                } elseif ($Filter.sortingType -eq 'Descending') {
-                    $SortSplat.Add('Descending',$true)
-                } else {
-                    Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                }
-                $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
-            }
-            'Hidden' { 
-                $info = $null
-            }
-            Default {
-                # Filter nothing
-                Write-Warning "Failed to filter with wrong type $($Filter.Type)"
-                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
-            }
-        } # switch filter type
-    }# foreach filter
-    if ($null -ne $info) {
-
-        $fragments = $fragments + (Format-HTMLTable -Data $info -ConditionalFormatting $ConditionalFormatting -Category $Property)
-
+    $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
+    if ($null -ne $FilteredInfo) {
+        $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
     } # not null info
 } # foreach property
+##################################
 $fragments = $fragments + "</div>"
 
 # Build HTML file
@@ -1966,7 +2065,6 @@ if ($IsVerbose) {
 }
 
 # Output to PDF?
-# would require an additional .exe though.....
 # https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 
 if ($SendEmail) {
