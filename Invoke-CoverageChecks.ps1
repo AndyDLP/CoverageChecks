@@ -856,7 +856,8 @@ $RunningUser = Get-ADUser ($env:USERNAME) -ErrorAction Stop
 Write-Verbose "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
 $RunningUserGroups = Get-ADGroup -LDAPFilter ("(member:1.2.840.113556.1.4.1941:={0})" -f ($RunningUser.DistinguishedName)) | Select-Object -ExpandProperty Name
-If ($RunningUserGroups -Contains "Domain Admins") {
+Write-Verbose "Group membership for $env:Username`: $($RunningUserGroups -join ', ')"
+If (($RunningUserGroups -Contains "Domain Admins") -or ($RunningUserGroups -Contains "Administrators")) {
     Write-Verbose "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
     Write-Log -Log $LogFilePath -Type INFO -Text "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
 } else {
