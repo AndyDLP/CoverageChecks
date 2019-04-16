@@ -28,7 +28,7 @@
 	
     .NOTES
         Andrew de la Pole - 2019
-        Version 0.8.0
+        Version 0.8.5
 #>
 [CmdletBinding()]
 Param (
@@ -41,6 +41,30 @@ Param (
 # BEGIN DEFINE FUNCTIONS
 
 function Write-Log {
+<#
+    .SYNOPSIS
+        Write to a log file
+    
+    .DESCRIPTION
+        Write to a log file with various options
+    
+    .PARAMETER Text
+        The text to add to the log file
+    
+    .PARAMETER Type
+        The log type, can be WARNING, ERROR or INFO
+    
+    .PARAMETER Log
+        The path to the log file (does not have to exist yet)
+    
+    .EXAMPLE
+        PS C:\> Write-Log -Log $LogFilePath -Type INFO -Text 'This is an informational log entry'
+    
+    .NOTES
+        Original from the internet (unsure of exact source)
+        Updated 2019-04-13 by Andy DLP
+#>
+    [CmdletBinding()]
     param(
     [parameter(Mandatory=$true,
                ValueFromPipeline = $true,
@@ -608,6 +632,175 @@ function Get-GPOChanges {
     }
 }
 
+function Format-HTMLTable {
+    <#
+        .SYNOPSIS
+            Format HTML table
+        
+        .DESCRIPTION
+            Format HTML table with conditonal formatting
+        
+        .PARAMETER Data
+            The data to format
+        
+        .PARAMETER Category
+            The category of the data
+        
+        .PARAMETER ConditionalFormatting
+            The conditional formatting
+        
+        .EXAMPLE
+            PS C:\> Format-HTMLTable -Data (Get-Service) -Category 'DFSRBacklogs' -ConditionalFormatting $CF
+        
+        .NOTES
+            Updated 2019-04-14 by Andy DLP
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true,
+                    Position = 1)]
+        [Object[]]$Data,
+        [parameter(Mandatory=$true,
+                    Position = 2)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Category,
+        [parameter(Mandatory=$false,
+                    Position = 3)]
+        [ValidateNotNull()]
+        [hashtable[]]$ConditionalFormatting = @{}
+    )
+
+    $UniqueProperties = @()
+    foreach ($Item in $Data) {
+        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique
+    $inc = 1
+    $Data | ForEach-Object -Process {
+        Add-Member -InputObject $_ -MemberType 'NoteProperty' -Name 'I' -Value $inc -Force
+        $inc++
+    }
+    [string]$stringOut = $Data | Select-Object -Property (@('I') + $UniqueProperties) | ConvertTo-Html -Fragment
+    [xml]$frag = $stringOut
+    Write-Verbose "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment: $($frag.InnerXml | Out-String)"
+    $MatchingFilters = $ConditionalFormatting | Where-Object -FilterScript { $_.Category -eq $Category }
+    foreach ($filter in $MatchingFilters) {
+        for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
+            $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
+            Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
+            Write-Verbose "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
+            Write-Log -Log $LogFilePath -Type INFO -Text "HTML value: $($frag.table.tr[$i].td[$ColumnHeader])"
+            $prop = $Filter.Property
+            $ActualValue = ($Data | Where-Object -FilterScript { $_.I -eq ($frag.table.tr[$i].td[0]) }).$prop
+            Write-Verbose "Actual value: $($ActualValue | Out-String)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Actual value: $($ActualValue | Out-String)"
+            Write-Verbose "Actual type: $($ActualValue.GetType())"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Actual type: $($ActualValue.GetType())"
+            Write-Verbose "FilterValue: $($Filter.Value | Out-String)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "FilterValue: $($Filter.Value | Out-String)"
+            $str = ( 'if ($ActualValue '  + "$($filter.comparison)" + ' $Filter.value ){ $true } else { $false }' )
+            Write-Verbose "Code string: $str"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
+            $ColourCode = [Scriptblock]::Create($str)
+            $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
+            Write-Verbose "Code return value: $Return"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
+            if ($Return -eq $true) {
+                $class = $frag.CreateAttribute("class")
+                $class.value = "alert"
+                $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
+            } # return true
+        } # for each row
+    } # foreach
+    return ("<H2>$Category</H2>" + $frag.InnerXml)
+} # function format HTML table
+
+function Select-Data {
+    <#
+        .SYNOPSIS
+            Format HTML table
+        
+        .DESCRIPTION
+            Format HTML table with conditonal formatting
+        
+        .PARAMETER Data
+            The data to filter
+        
+        .PARAMETER Category
+            The category of the data
+        
+        .PARAMETER DefaultFilters
+            The filters to apply
+        
+        .NOTES
+            Updated 2019-04-15 by Andy DLP
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory=$true,
+                    Position = 1)]
+        [Object[]]$Data,
+        [parameter(Mandatory=$true,
+                    Position = 2)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Category,
+        [parameter(Mandatory=$false,
+                    Position = 3)]
+        [ValidateNotNull()]
+        [hashtable[]]$DefaultFilters = @{}
+    )
+
+    $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Category }
+    foreach ($filter in $MatchingFilters) {
+        Write-Verbose "Filter: $($filter | Out-String)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
+        switch ($filter.type) {
+            'Property' { 
+                if ($filter.value -is [array]) {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
+                } else {
+                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
+                }
+                $FilterScript = [Scriptblock]::Create($str)
+                $Data = $Data | Where-Object $FilterScript -ErrorAction Continue
+            }
+            'Display' { 
+                $SelectSplat = @{}
+                if ($Filter.Action -eq 'Include') {
+                    $SelectSplat.Add('Property',$Filter.Properties)
+                } elseif ($filter.Action -eq 'Exclude') {
+                    $SelectSplat.Add('ExcludeProperty',($Filter.Properties | Where-Object -FilterScript { $_ -ne 'I' }))
+                } else {
+                    Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
+                }
+                $SortSplat = @{
+                    Property = $Filter.SortingProperty
+                }
+                if ($Filter.SortingType -eq 'Ascending') {
+                    # Normal behaviour
+                } elseif ($Filter.sortingType -eq 'Descending') {
+                    $SortSplat.Add('Descending',$true)
+                } else {
+                    Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
+                }
+                $Data = $Data | Select-Object @SelectSplat | Sort-Object @SortSplat
+            }
+            'Hidden' { 
+                $Data = $null
+            }
+            Default {
+                # Filter nothing
+                Write-Warning "Failed to filter with wrong type $($Filter.Type)"
+                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
+            }
+        } # switch filter type
+    }# foreach filter
+    $Data
+} # function Select Data
 
 
 # END DEFINE FUNCTIONS
@@ -625,11 +818,11 @@ if (-not $PSScriptRoot) {
 }
 
 # Todays date in filename compatible format
-$Today = (Get-Date -Format "dd-MM-yy")
+$Today = (Get-Date -Format "yyyy-MM-dd-HH-mm-ss")
 
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Data" -ErrorAction SilentlyContinue) ) { mkdir "$PSScriptRoot\Data" | Out-Null }
-if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\Logs" | Out-Null }
-$LogFilePath = (Join-Path -Path "$PSScriptRoot\Data\Logs" -ChildPath "$Today.log")
+if ($null -eq (Get-Item -Path "$PSScriptRoot\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Logs" | Out-Null }
+$LogFilePath = (Join-Path -Path "$PSScriptRoot\Logs" -ChildPath "$Today.log")
 
 
 Write-Log -Log $LogFilePath -Type INFO -Text "Computer name: $env:COMPUTERNAME"
@@ -680,133 +873,142 @@ if ($null -eq $DefaultFilters) {
     Write-Warning "DefaultFilters variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "DefaultFilters variable not found, using system defaults"
     $DefaultFilters = @(
-        @{
-            Category = 'Disks'
-            Type = 'Property'
-            Property = 'PercentFree'
-            Comparison = '-lt'
-            Value = '100' # only show disks at 100% of less free space (example)
-        },
-
-        
-        @{
-            Category = 'Disks'
-            Type = 'Colour'
-            Property = 'PercentFree'
-            Comparison = '-lt'
-            Value = '30'
-        },
-        @{
-            Category = 'GeneralInformation'
-            Type = 'Colour'
-            Property = 'LastBootUpTime'
-            Comparison = '-gt'
-            Value = '"((Get-Date).AddDays(-2))"'
-        },
-        @{
-            Category = 'NonStandardServices'
-            Type = 'Colour'
-            Property = 'State'
-            Comparison = '-eq'
-            Value = "'Stopped'"
-        },
-        @{
-            Category = 'PendingReboot'
-            Type = 'Colour'
-            Property = 'RebootPending'
-            Comparison = '-eq'
-            Value = "'$True'"
-        },
-        @{
-            Category = 'UpdateInfo'
-            Type = 'Colour'
-            Property = 'LastInstall'
-            Comparison = '-lt'
-            Value = "'((Get-Date).AddMonths(-3))'"
-        },
-
-
-        @{
-            Category = 'DFSRBacklogs'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'Disks'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'PercentFree'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'ExpiredSoonCertificates'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'GeneralInformation'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'LocalAdministrators'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = '*'
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'NonStandardScheduledTasks'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('HostName','TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
-            SortingProperty = @('ComputerName','Last Run Time')
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'NonStandardServices'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'PendingReboot'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'SharedPrinters'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
-            SortingProperty = 'ComputerName','PrinterName'
-            SortingType = 'Ascending'
-        },
-        @{
-            Category = 'UpdateInfo'
-            Type = 'Display'
-            Action = 'Include'
-            Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
-            SortingProperty = 'ComputerName'
-            SortingType = 'Ascending'
-        }
-    )
+    @{
+        Category = 'Disks'
+        Type = 'Property'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 100 # only show disks at 100% of less free space (example)
+    },
+    @{
+        Category = 'VMSnapshots'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','ParentSnapshot','Description','Created','PowerState','VM','SizeGB','IsCurrent','IsReplaySupported')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'LastEvents'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','IpAddress','UserAgent','CreatedTime','UserName','LoginTime','ChainId','FullFormattedMessage','To','NewStatus')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'VMs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','PowerState','NumCpu','CoresPerSocket','MemoryGB','ProvisionedSpaceGB','UsedSpaceGB','Notes','Folder','Version')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Datastores'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('VIServer','Name','Datacenter','CapacityGB','FreeSpaceGB','Accessible','Type','State','FileSystemVersion')
+        SortingProperty = 'VIServer'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'DFSRBacklogs'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','ReplicationGroupname','SendingMember','ReceivingMember','BacklogFileCount')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Disks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Volume','TotalSize','FreeSpace','PercentFree')
+        SortingProperty = 'PercentFree'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Unresponsive Domain Controllers'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','ServerResponding','ServerWSManrunning')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'Unresponsive servers'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Error','ServerResponding','ServerWSManrunning','Ignored')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Subject','Issuer','NotBefore','NotAfter','Thumbprint','HasPrivateKey')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'GeneralInformation'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','OperatingSystem','IsVirtual','IsServerCore','SMB1Enabled','InstallDate','LastBootUpTime','CPUs','MemoryGB')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'LocalAdministrators'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Group','Members')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @(@{n='ComputerName';e={$_.HostName}},'TaskName','Status','Next Run Time','Last Run Time','Last Result','Author','Run As User','Schedule Type')
+        SortingProperty = @('ComputerName','Last Run Time')
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.SystemName}},'Name','DisplayName','State','StartMode','StartName','PathName')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'PendingReboot'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @( @{n='ComputerName';e={$_.Computer}},'CBServicing','WindowsUpdate','PendComputerRename','RebootPending','CCMClientSDK' )
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'SharedPrinters'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','Printername','IsPingable','PublishedToAD','PrinterAddress','PrinterDriver')
+        SortingProperty = 'ComputerName','PrinterName'
+        SortingType = 'Ascending'
+    },
+    @{
+        Category = 'UpdateInfo'
+        Type = 'Display'
+        Action = 'Include'
+        Properties = @('ComputerName','UpToDate','LastSearch','LastInstall')
+        SortingProperty = 'ComputerName'
+        SortingType = 'Ascending'
+    }
+)
 }
 Write-Verbose "$($DefaultFilters.Count) filters loaded"
 Write-Log -Log $LogFilePath -Type INFO -Text "$($DefaultFilters.Count) filters loaded"
@@ -820,6 +1022,113 @@ if ($null -eq $IgnoredServers) {
 Write-Verbose ("Servers ignored: " + $IgnoredServers -join ', ')
 Write-Log -Log $LogFilePath -Type INFO -Text ("Servers ignored: " + $IgnoredServers -join ', ')
 
+
+if ($null -eq $ConditionalFormatting) {
+    Write-Warning "ConditionalFormatting variable not found, using system defaults"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "ConditionalFormatting variable not found, using system defaults"
+    $ConditionalFormatting = @(
+    @{
+        Category = 'DCDiag Results'
+        Property = 'FailedTests'
+        Comparison = '-ne'
+        Value = $null
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NTDSService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'DNSService'
+        Comparison = '-eq'
+        Value = 'Stopped'
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'NetlogonAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'Domain Controllers'
+        Property = 'SYSVOLAccessible'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SYSVOL Backlog'
+        Property = 'BacklogFileCount'
+        Comparison = '-ne'
+        Value = 0
+    },
+    @{
+        Category = 'Disks'
+        Property = 'PercentFree'
+        Comparison = '-lt'
+        Value = 50
+    },
+    @{
+        Category = 'NonStandardScheduledTasks'
+        Property = 'Run As User'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'State'
+        Comparison = '-eq'
+        Value = "Stopped"
+    },
+    @{
+        Category = 'NonStandardServices'
+        Property = 'StartName'
+        Comparison = '-match'
+        Value = 'administrator'
+    },
+    @{
+        Category = 'PendingReboot'
+        Property = 'RebootPending'
+        Comparison = '-eq'
+        Value = $true
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotBefore'
+        Comparison = '-gt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'ExpiredSoonCertificates'
+        Property = 'NotAfter'
+        Comparison = '-lt'
+        Value = (Get-Date)
+    },
+    @{
+        Category = 'UpdateInfo'
+        Property = 'UpToDate'
+        Comparison = '-eq'
+        Value = $false
+    },
+    @{
+        Category = 'SharedPrinters'
+        Property = 'IsPingable'
+        Comparison = '-eq'
+        Value = $false
+    }
+)
+}
+Write-Verbose ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
+Write-Log -Log $LogFilePath -Type INFO -Text ("ConditionalFormatting: " + $ConditionalFormatting -join ', ')
+
+
 if ($null -eq $SendEmail) {
     Write-Warning "SendEmail variable not found, using system defaults"
     Write-Log -Log $LogFilePath -Type WARNING -Text "SendEmail variable not found, using system defaults"
@@ -829,7 +1138,6 @@ if ($null -eq $SendEmail) {
 Write-Verbose "Send email enabled: $SendEmail"
 Write-Log -Log $LogFilePath -Type INFO -Text "Send email enabled: $SendEmail"
 
-# Only define the below if email is enabled
 if ($SendEmail -eq $true) {
 
     if ($null -eq $TargetEmail) {
@@ -909,7 +1217,7 @@ Import-Module -Name $RequiredModules -ErrorAction Stop -Verbose:$false
 ########################################################
 # GET AD INFORMATION
 
-# !Assumption is the environment is one forest with one root domain only!
+# !Assumption is the environment is one forest only!
 
 $ThisForest = Get-ADForest
 
@@ -921,8 +1229,8 @@ $AllDomainObjectInfo =@()
 foreach ($Domain in $ThisForest.Domains) {
     $ThisDomain = Get-ADDomain -Identity $Domain
     
-    Write-Verbose "Domain name: $($Domain.DNSRoot)"
-    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($Domain.DNSRoot)"
+    Write-Verbose "Domain name: $($ThisDomain.DNSRoot)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Domain name: $($ThisDomain.DNSRoot)"
 
     $AllDomainControllersPS = ( $ThisDomain.ReplicaDirectoryServers + $ThisDomain.ReadOnlyReplicaDirectoryServers ) | Get-ADDomainController
     $AllDomainControllersAD = Get-ADObject -Server $ThisDomain.PDCEmulator -Filter {ObjectClass -eq 'computer'} -SearchBase "OU=Domain Controllers,$($ThisDomain.DistinguishedName)"
@@ -949,6 +1257,7 @@ foreach ($Domain in $ThisForest.Domains) {
         InfrastructureMaster = $ThisDomain.InfrastructureMaster
         Sites = (($ThisForest.Sites | Sort-Object) -join ', ')
         SYSVOLReplicationMode = $SYSVOLReplicationMode
+        ADRecycleBinEnabled = [bool]((Get-ADOptionalFeature -filter {Name -eq "Recycle Bin Feature"}).EnabledScopes.Count)
     }
     if ($null -ne $Differences) {
         $ADInfoParams.Add('Notes',"MISMATCHED DC LIST: PS: $($AllDomainControllersPS | Out-String) - AD: $($AllDomainControllersAD | Out-String)")
@@ -962,8 +1271,8 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
     foreach ($Property in $ADInfo.psobject.properties.Name) {
-        Write-Verbose "$($Domain.Name) $($Property): $($ADInfo.$Property)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.Name) $($Property): $($ADInfo.$Property)"
+        Write-Verbose "$($ThisDomain.NetBIOSName) $($Property): $($ADInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($ThisDomain.NetBIOSName) $($Property): $($ADInfo.$Property)"
     }
 
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
@@ -997,8 +1306,8 @@ foreach ($Domain in $ThisForest.Domains) {
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
 
     foreach ($Property in $DomainObjectInfo.psobject.properties.Name) {
-        Write-Verbose "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "$($Domain.DNSRoot) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Verbose "$($ThisDomain.NetBIOSName) $($Property): $($DomainObjectInfo.$Property)"
+        Write-Log -Log $LogFilePath -Type INFO -Text "$($ThisDomain.NetBIOSName) $($Property): $($DomainObjectInfo.$Property)"
     }
 } # foreach domain
 
@@ -1006,6 +1315,7 @@ foreach ($Domain in $ThisForest.Domains) {
 $AllDCInfo = @()
 $FailedDCInfo = @()
 $AllDCBacklogs = @()
+$DCDiagResults = @()
 $inc = 0
 
 foreach ($DC in $AllDomainControllersPS) {
@@ -1017,7 +1327,6 @@ foreach ($DC in $AllDomainControllersPS) {
 
     # Find if PC is ON and responding to WinRM
     $ServerResponding = Test-Connection -Count 1 -ComputerName $DC.Name -Quiet
-    # Assume WMF / PowerShell 5.1 is installed and working and if not then set flag to false
     try {
         Test-WSMan -ComputerName $DC.Name -ErrorAction Stop | Out-Null
         $ServerWSManrunning = $true
@@ -1048,9 +1357,9 @@ foreach ($DC in $AllDomainControllersPS) {
                     LastBoot = Get-Date -Date ($OSInfo.ConvertToDateTime($OSInfo.LastBootUpTime)) -Format 'MM/dd/yyyy HH:mm:ss'
                     IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
                     IsGC = $args[0].IsGlobalCatalog
-                    NTDSService = (Get-Service -Name 'NTDS').Status
-                    NetlogonService = (Get-Service -Name 'Netlogon').Status
-                    DNSService = (Get-Service -Name 'DNS').Status
+                    NTDSService = (Get-Service -Name 'NTDS' | Select-Object -ExpandProperty Status).ToString()
+                    NetlogonService = (Get-Service -Name 'Netlogon' | Select-Object -ExpandProperty Status).ToString()
+                    DNSService = (Get-Service -Name 'DNS' | Select-Object -ExpandProperty Status).ToString()
                     IsServerCore = $IsServerCore
                 }
                 foreach ($Disk in $DiskInfo) {
@@ -1072,6 +1381,7 @@ foreach ($DC in $AllDomainControllersPS) {
             } -ErrorAction Stop -ArgumentList $DC
 
             Write-Verbose "Gathering DFSR backlog information from $($DC.name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Gathering DFSR backlog information from $($DC.name)"
             $DCBacklog = Invoke-Command -Session $DCPSSession -ScriptBlock ${function:Get-DfsrBacklog} -ArgumentList $DC.Name
             $DCBacklog = $DCBacklog | Where-Object -FilterScript { $_.ReplicationGroupName -eq 'Domain System Volume' } | Select-Object -Property ComputerName,ReplicationGroupname,SendingMember,ReceivingMember,BacklogFileCount
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
@@ -1079,6 +1389,45 @@ foreach ($DC in $AllDomainControllersPS) {
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
             # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...?
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
+
+            # dcdiag
+            Write-Verbose "Gathering DCDIAG backlog information from $($DC.name)"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Gathering DCDIAG backlog information from $($DC.name)"
+            $DCDiag = Invoke-Command -Session $DCPSSession -ScriptBlock {
+                # DCDiag parsing
+                $DCDIAGResult = New-Object System.Object
+                $DCDIAGStr = dcdiag.exe
+                $DCDIAGResult | Add-Member -name ComputerName -Value $env:COMPUTERNAME -Type NoteProperty -Force
+                $PassedStrings = @()
+                $FailedStrings = @()
+                Foreach ($Entry in $DCDIAGStr) {
+                    Switch -Regex ($Entry) {
+                        "Starting" {
+                            $Testname = ($Entry -replace ".*Starting test: ").Trim()
+                        }
+                        "passed|failed" {
+                            $TestStatus = if ($Entry -match "Passed") { "Passed" } else { "Failed" }
+                        } # case pass or pail
+                    } # switch
+
+                    if (($TestName -ne $null) -and ($TestStatus -ne $null)) {
+                        if ($TestStatus -eq 'Passed') { $PassedStrings = $PassedStrings + $($TestName.Trim()) } else { $FailedStrings = $FailedStrings + $($TestName.Trim()) }
+                    } # if not null
+                } # foreach line in DCDIAG output
+                if ($PassedStrings.Count -gt 0) {
+                    $PassedStrings = $PassedStrings | Select-Object -Unique
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'PassedTests' -Value ($PassedStrings -join ', ') -Force
+                }
+                if ($FailedStrings.Count -gt 0) {
+                    $PassedStrings = $FailedStrings | Select-Object -Unique
+                    $DCDIAGResult | Add-Member -Type NoteProperty -Name 'FailedTests' -Value ($FailedStrings -join ', ') -Force
+                }
+                $DCDIAGResult
+            } # scriptblock
+            $DCdiag = $DCDiag | Select-Object -Property ComputerName,PassedTests,FailedTests
+            $DCDiagOutputObject
+            $DCDiagResults = $DCDiagResults + $DCDiag
+            
 
             $DCResponse = [PSCustomObject]$OutputObjectParams
             # Reorder in selected order
@@ -1180,7 +1529,7 @@ Write-Verbose "All domains server list: $($ServerList -join ', ')"
 Write-Log -Log $LogFilePath -Type INFO -Text "All domains server list: $($ServerList -join ', ')"
 
 
-# incremental counter
+# incremental counters & variable init
 $inc = 0
 $AllServerInfo = @()
 $FailedServers = @()
@@ -1229,6 +1578,7 @@ foreach ($Server in $ServerList) {
                     $OutputObjectParams = @{}
 
                     $InfoObject = [PSCustomObject]@{
+                        GUID = ([GUID]::NewGuid().Guid)
                         ComputerName = $env:COMPUTERNAME
                         OperatingSystem = $OSInfo.Caption
                         IsVirtual = if (($PCInfo.model -like "*virtual*") -or ($PCInfo.Manufacturer -eq 'QEMU') -or ($PCInfo.Model -like "*VMware*")) { $true } else { $false }
@@ -1248,6 +1598,7 @@ foreach ($Server in $ServerList) {
                         $TotalSize = $Disk.Size / 1GB
                         $PercentFree = (($Freespace / $TotalSize) * 100)
                         $DiskObj = [PSCustomObject]@{
+                            GUID = ([GUID]::NewGuid().Guid)
                             ComputerName = $env:COMPUTERNAME
                             Volume = $Disk.DeviceId
                             TotalSize = [math]::Round($TotalSize)
@@ -1262,6 +1613,7 @@ foreach ($Server in $ServerList) {
                     # TODO: Filter domain admins / Administrator account
                     $LocalAdmins = net localgroup "Administrators" | Where-Object -FilterScript {$_ -AND $_ -notmatch "command completed successfully"} | Select-Object -Skip 4
                     $AdminObj = [PSCustomObject]@{
+                        GUID = ([GUID]::NewGuid().Guid)
                         ComputerName = $env:COMPUTERNAME
                         Group = 'Administrators'
                         Members = $LocalAdmins
@@ -1270,12 +1622,13 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
-                    if ((Get-Service Spooler).Status -eq 'Running') {
+                    if ($InstalledRoles -contains 'Print-Server') {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
                         if ($null -ne $SharedPrinters) {
                             $PrinterList = @()
                             foreach ($Printer in $SharedPrinters) {
                                 $PrinterObjectParams = @{
+                                    GUID = ([GUID]::NewGuid().Guid)
                                     ComputerName = $env:COMPUTERNAME
                                     PrinterName = $Printer.Name
                                     PrinterDriver = $Printer.DriverName
@@ -1301,6 +1654,7 @@ foreach ($Server in $ServerList) {
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
                     $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
+                        $NonStandardScheduledTasks | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
                     }
 
@@ -1309,14 +1663,36 @@ foreach ($Server in $ServerList) {
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
                     $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.Name -notin $IgnoredServiceNames) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
+                        $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
                     }
 
                     # Expired certificates / less than 30 days
                     $ExpiredSoonCertificates = Get-ChildItem -Path 'cert:\LocalMachine\My\' -Recurse | Where-Object -FilterScript { (($_.NotBefore -gt (Get-Date)) -or ($_.NotAfter -lt (Get-Date).AddDays(30))) -and ($null -ne $_.Thumbprint) }
                     if ($null -ne $ExpiredSoonCertificates) {
-                        $ExpiredSoonCertificates | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name ComputerName -Value $env:COMPUTERNAME }
+                        $ExpiredSoonCertificates | Add-Member -MemberType 'NoteProperty' -Name 'ComputerName' -Value $env:COMPUTERNAME
+                        $ExpiredSoonCertificates | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
+                    }
+
+                    # DHCP information
+                    if ($InstalledRoles -contains 'DHCP') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # WSUS information
+                    if ($InstalledRoles -contains 'UpdateServices') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # WDS information
+                    if ($InstalledRoles -contains 'WDS') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    }
+
+                    # Hyper-V information
+                    if ($InstalledRoles -contains 'Hyper-V') {
+                        # Check installed sub features (PS cmdlets / RSAT tools etc)
                     }
                     
                     # Send the resulting hashtable out
@@ -1327,16 +1703,25 @@ foreach ($Server in $ServerList) {
                 if ($InstalledRoles -contains 'FS-DFS-Replication') {
                     $DFSRBacklogs = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-DfsrBacklog}  -ArgumentList $Server.Name
                     $DFSRBacklogs = $DFSRBacklogs | Where-Object -FilterScript { $_.ReplicationGroupName -ne 'Domain System Volume' }
-                    $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
+                    if ($null -ne $DFSRBacklogs) {
+                        $DFSRBacklogs | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
+                        $OutputObjectParams.Add('DFSRBacklogs',$DFSRBacklogs)
+                    }
                 }
 
                 # Get Windows Update info
                 $UpdateInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-RecentUpdateInfo}
-                $OutputObjectParams.Add('UpdateInfo',$UpdateInfo)
+                if ($null -ne $UpdateInfo) {
+                    $UpdateInfo | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
+                    $OutputObjectParams.Add('UpdateInfo',$UpdateInfo)
+                }
 
                 # pending reboot
                 $RebootInfo = Invoke-Command -Session $ServerSSession -HideComputerName -ErrorAction Stop -ScriptBlock ${function:Get-PendingReboot}
-                $OutputObjectParams.Add('PendingReboot',$RebootInfo)
+                if ($null -ne $RebootInfo) {
+                    $RebootInfo | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
+                    $OutputObjectParams.Add('PendingReboot',$RebootInfo)
+                }
 
                 # create object from params
                 $ServerObject = [PSCustomObject]$OutputObjectParams
@@ -1397,10 +1782,76 @@ foreach ($Server in $ServerList) {
 # END MAIN INFO GATHERING LOOP
 ##########################################################
 
+#########################################################
+# BEGIN VMWARE
+
+$VMWareInfo = @()
+if ($VCentersAndESXIHosts.count -gt 0) {
+    Write-Verbose "Beginning info gathering from VMWare servers: $($VCentersAndESXIHosts -join ', ')"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Beginning info gathering from VMWare servers: $($VCentersAndESXIHosts -join ', ')"
+    $PowerCLICfg = Get-PowerCLIConfiguration -Scope Session
+    # Set friendly powercli config
+    Set-PowerCLIConfiguration -ProxyPolicy UseSystemProxy -DefaultVIServerMode Multiple -InvalidCertificateAction Ignore -ParticipateInCeip $false -CEIPDataTransferProxyPolicy UseSystemProxy -DisplayDeprecationWarnings $true -WebOperationTimeoutSeconds 600 -Confirm:$false -Scope Session | Out-Null
+    $ConnectedVMwareList = @()
+    $FailedVMwareList = @()
+    foreach ($Server in $VCentersAndESXIHosts) {
+        $CanPing = Test-Connection -ComputerName $Server -Quiet -Count 2
+        if ($CanPing -eq $true) {
+            Write-Verbose "Ping successful to: $server"
+            Write-Log -Log $LogFilePath -Type INFO -Text "Ping successful to: $server"
+            try {
+                # TODO: Add export + import of credentials for easy re-use (run as service account)
+                # Below works for same user on same machine only (encrypts the password only) - Run as the user running the script not the principal
+                # $Cred = Get-Credential Domain\User | Export-CliXml .\Credential.xml
+                # $ImportedCred = Import-CliXml .\credential.xml
+                $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
+                $ConnectedVMwareList += $VIServer
+                $VMList = Get-VM -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $SnapshotList = $VMList | Get-Snapshot -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $Datastores = Get-Datastore -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $ESXEvents = Get-VIEvent -Server $VIServer | Sort-Object -Property CreatedTime -Descending | Select-Object -First 20 | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                $VMWareServer = [PSCustomObject]@{
+                    VMs = $VMList
+                    VMSnapshots = $SnapshotList
+                    Datastores = $Datastores
+                    LastEvents = $ESXEvents
+                }
+                $VMWareInfo = $VMWareInfo + $VMWareServer
+            } # try
+            catch {
+                Write-Error "Error with server: $server"
+                Write-Log -Log $LogFilePath -Type ERROR -Text "Error with server: $server"
+                $FailedVMwareList += [PSCustomObject]@{
+                    Server = $Server
+                    Error = $_
+                    CanPing = $true
+                }
+            }
+        } else {
+            Write-Error "Ping unsuccessful to: $server"
+            Write-Log -Log $LogFilePath -Type ERROR -Text "Ping unsuccessful to: $server"
+            $FailedVMwareList += [PSCustomObject]@{
+                Server = $Server
+                Error = $null
+                CanPing = $false
+            }
+        } # else can ping
+    } # foreach vmware server
+    
+    # Set it back to how it was
+    Set-PowerCLIConfiguration -ProxyPolicy ($PowerCLICfg.ProxyPolicy) -DefaultVIServerMode ($PowerCLICfg.DefaultVIServerMode) -InvalidCertificateAction ($PowerCLICfg.InvalidCertificateAction) -ParticipateInCeip ($PowerCLICfg.ParticipateInCeip) -CEIPDataTransferProxyPolicy ($PowerCLICfg.CEIPDataTransferProxyPolicy) -DisplayDeprecationWarnings ($PowerCLICfg.DisplayDeprecationWarnings) -WebOperationTimeoutSeconds ($PowerCLICfg.WebOperationTimeoutSeconds) -Confirm:$false -Scope Session | Out-Null
+} # vmware servers specified
+
+# END VMWARE
+#########################################################
+
 ##########################################################
 # BEGIN OUTPUT
 
-$CSSHeaders = @"
+if ($null -eq $CSSHeaders) {
+    Write-Warning "CSSHeaders variable not found, using system default"
+    Write-Log -Log $LogFilePath -Type WARNING -Text "CSSHeaders variable not found, using system default"
+    $CSSHeaders = @"
 <style type="text/css">
 body {
 	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
@@ -1408,7 +1859,6 @@ body {
 	max-width: 85%;
 }
 
- 
 table {
 	border-collapse: collapse;
 	border: 1px black solid;
@@ -1498,6 +1948,8 @@ table{ margin-left: 20px; }
 
 </style>
 "@
+}
+
 $fragments = @()
 $fragments = $fragments + "<H1>ECI Coverage Report - $(Get-Date)</H1>"
 
@@ -1506,6 +1958,8 @@ foreach ($domain in $AllDomainInfo) {
     $DomainString = '<div id="report"><table>
     <colgroup><col/><col/></colgroup>
     <tr><th>Attribute</th><th>Value</th></tr>'
+    #$ColourCoded = ''
+    
     foreach ($Property in ($domain.PSObject.Properties.name)) {
         $DomainString = $DomainString + ("<tr><td>$Property</td>" + "<td>" + ($domain.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     
@@ -1519,126 +1973,83 @@ foreach ($domain in $AllDomainInfo) {
         $ObjectString = $ObjectString + ("<tr><td>$Property</td>" + "<td>" + ($ObjectInfo.psobject.Properties | Where-Object -FilterScript {$_.name -eq $Property}).value + "</td></tr>")
     }
     $ObjectString = $ObjectString + "</table>"
-    $fragments = $fragments + ("<H2>Domain info for: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>Monitored AD Objects for: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
+    $fragments = $fragments + ("<H2>DomainInfo: $($domain.DomainName)</H2>" + $DomainString + "<br><H2>MonitoredADObjects: $($Domain.DomainName)</H2>" + $ObjectString + "<br>")
 }
 
 # DC Info fragments
-$fragments = $fragments + ($AllDCInfo | ConvertTo-Html -Fragment -PreContent "<H2>Domain Controllers</H2>")
+$AllDCInfo = Select-Data -Data $AllDCInfo -Category 'Domain Controllers' -DefaultFilters $DefaultFilters
+$fragments = $fragments + (Format-HTMLTable -Data $AllDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Domain Controllers')
+
+# DC diag fragments
+$DCDiagResults = Select-Data -Data $DCDiagResults -Category 'DCDiag Results' -DefaultFilters $DefaultFilters
+$fragments = $fragments + (Format-HTMLTable -Data $DCDiagResults -ConditionalFormatting $ConditionalFormatting -Category 'DCDiag Results')
 
 # DFSR fragments
-$fragments = $fragments + ($AllDCBacklogs | ConvertTo-Html -Fragment -PreContent "<H2>SYSVOL DFSR Backlog</H2>" -PostContent "<p>A file count of -1 means the DFSR management tools are not installed</p>")
+$AllDCBacklogs = Select-Data -Data $AllDCBacklogs -Category 'SYSVOL Backlog' -DefaultFilters $DefaultFilters
+$fragments = $fragments + ((Format-HTMLTable -Data $AllDCBacklogs -ConditionalFormatting $ConditionalFormatting -Category 'SYSVOL Backlog') + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
+# Failed DCs
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
-    $fragments = $fragments + ($FailedDCInfo | Select-Object -Property ComputerName,ServerResponding,ServerWSManRunning | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive Domain Controllers</H2>')
+    $FailedDCInfo = Select-Data -Data $FailedDCInfo -Category 'Unresponsive Domain Controllers' -DefaultFilters $DefaultFilters
+    $fragments = $fragments + (Format-HTMLTable -Data $FailedDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive Domain Controllers')
 }
 
+# Failed servers
 if ($FailedServers.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
-    $fragments = $fragments + ($FailedServers | Select-Object -Property ComputerName,Error,ServerResponding,ServerWSManRunning,Ignored | ConvertTo-Html -Fragment -PreContent '<H2>Unresponsive servers</H2>')
+    $FailedServers = Select-Data -Data $FailedServers -Category 'Unresponsive servers' -DefaultFilters $DefaultFilters
+    $fragments = $fragments + (Format-HTMLTable -Data $FailedServers -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive servers')
 }
+
+# VMWare Vcenter fragments
+if ($VCentersAndESXIHosts.count -gt 0) {
+    $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $fragments = $fragments + '<H1>VMWare Infrastructure</H1>'
+
+    # unresponsive servers
+    if ($FailedVMwareList.count -gt 0) {
+        $FailedDCInfo = Select-Data -Data $FailedVMwareList -Category 'Unresponsive VMWare Servers' -DefaultFilters $DefaultFilters
+        $fragments = $fragments + (Format-HTMLTable -Data $FailedVMwareList -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive VMWare Servers')
+    }
+    
+    $UniqueProperties = @()
+    foreach ($Item in $VMWareInfo) {
+        $UniqueProperties = $UniqueProperties + ($Item.PSObject.Properties.name)
+    }
+    $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
+    Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
+    Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
+    foreach ($Property in $UniqueProperties) {
+        $info = $VMWareInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+        $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
+        if ($null -ne $FilteredInfo) {
+            $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
+        } # not null info
+    } # foreach property
+} # VMWare Servers specified
 
 $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
 $fragments = $fragments + '<H1>All Server Information</H1>'
 
 # Server Info fragments
+
+##################################
 $UniqueProperties = @()
 foreach ($ServerInfo in $AllServerInfo) {
     $UniqueProperties = $UniqueProperties + ($ServerInfo.PSObject.Properties.name)
 }
 $UniqueProperties = $UniqueProperties | Select-Object -Unique | Sort-Object
-Write-Verbose ($UniqueProperties | Out-String)
+Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
-    $Frag = $null
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
-    $MatchingFilters = $DefaultFilters | Where-Object -FilterScript { $_.Category -eq $Property }
-    # Filter the data as described in the filters defined above
-    foreach ($filter in $MatchingFilters) {
-        Write-Verbose "Filter: $($filter | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Filter: $($filter | Out-String)"
-        switch ($filter.type) {
-            'Property' { 
-                if ($filter.value -is [array]) {
-                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' @(' + ($filter.Value -join ',') + ')')
-                } else {
-                    [string]$str = ('$_.' + $Filter.Property + ' ' + $filter.Comparison + ' ' + $filter.Value)
-                }
-                $FilterScript = [Scriptblock]::Create($str)
-                $info = $info | Where-Object $FilterScript -ErrorAction Continue
-            }
-            'Display' { 
-                $SelectSplat = @{}
-                if ($Filter.Action -eq 'Include') {
-                    $SelectSplat.Add('Property',$Filter.Properties)
-                } elseif ($filter.Action -eq 'Exclude') {
-                    $SelectSplat.Add('ExcludeProperty',$Filter.Properties)
-                } else {
-                    Write-Warning "Failed filter: $($filter.Category) $($filter.Type)"
-                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed filter: $($filter.Category) $($filter.Type)"
-                }
-                $SortSplat = @{
-                    Property = $Filter.SortingProperty
-                }
-                if ($Filter.SortingType -eq 'Ascending') {
-                    # Normal behaviour
-                } elseif ($Filter.sortingType -eq 'Descending') {
-                    $SortSplat.Add('Descending',$true)
-                } else {
-                    Write-Warning "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                    Write-Log -Log $LogFilePath -Type WARNING -Text "Failed sorting $($filter.SortingProperty) $($filter.sortingType)"
-                }
-                $info = $info | Select-Object @SelectSplat | Sort-Object @SortSplat
-            }
-            'Colour' { 
-                # do nothing here?
-            }
-            'Hidden' { 
-                $info = $null
-            }
-            Default {
-                # Filter nothing
-                Write-Warning "Failed to filter with wrong type $($Filter.Type)"
-                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to filter with wrong type $($Filter.Type)"
-            }
-        } # switch filter type
-    }# foreach filter
-    if ($null -ne $info) {
-        Write-Verbose "Property info for $Property`: $($info | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property info for $Property`: $($info | Out-String)"
-        [string]$stringOut = $info | ConvertTo-Html -Fragment
-        [xml]$frag = $stringOut
-        Write-Verbose "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        Write-Log -Log $LogFilePath -Type INFO -Text "Property InnerXML fragment for $Property`: $($frag.InnerXml | Out-String)"
-        $ColourFilters = ($MatchingFilters | Where-Object -FilterScript { $_.Type -eq 'Colour' })
-        foreach ($filter in $ColourFilters) {
-            for ($i=1;$i -le $frag.table.tr.count-1;$i++) {
-                $ColumnHeader = [array]::indexof($frag.table.tr.th,$Filter.Property)
-                Write-Verbose "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Column header: $ColumnHeader - $($Filter.Property) - $($frag.table.tr.th -join ', ')"
-                $FilterValue = if ($filter.value -is [array]) { '@(' + ($filter.Value -join ',') + ')' } else { $Filter.Value }
-                Write-Verbose ($frag.table.tr[$i].td[$ColumnHeader]).GetType()
-                Write-Verbose "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Data value: $($frag.table.tr[$i].td[$ColumnHeader])"
-                $str = 'if (' + $FilterValue + " $($filter.comparison) " + '$frag.table.tr[$i].td[$ColumnHeader]){ $true } else { $false }'
-                Write-Verbose "Code string: $str"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Code string: $str"
-                $ColourCode = [Scriptblock]::Create($str)
-                $Return = Invoke-Command -ScriptBlock $ColourCode -NoNewScope
-                Write-Verbose "Code return value: $Return"
-                Write-Log -Log $LogFilePath -Type INFO -Text "Code return value: $Return"
-                if ($Return -eq $false) {
-                    $class = $frag.CreateAttribute("class")
-                    $class.value = "alert"
-                    $frag.table.tr[$i].childnodes[$ColumnHeader].attributes.append($class) | Out-Null
-                    Write-Verbose "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
-                    Write-Log -Log $LogFilePath -Type INFO -Text "Table cell to be coloured: $($frag.table.tr[$i].childnodes[$ColumnHeader])"
-                }
-            } # for every row in HTML table
-        } # foreach colour
-        $fragments = $fragments + ("<H2>$Property</H2>" + $frag.InnerXml)
+    $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
+    if ($null -ne $FilteredInfo) {
+        $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
     } # not null info
 } # foreach property
+##################################
 $fragments = $fragments + "</div>"
 
 # Build HTML file
@@ -1653,7 +2064,6 @@ if ($IsVerbose) {
 }
 
 # Output to PDF?
-# would require an additional .exe though.....
 # https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 
 if ($SendEmail) {
