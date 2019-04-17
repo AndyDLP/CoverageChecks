@@ -185,7 +185,7 @@ function Get-DfsrBacklog {
                                 Write-Verbose "DFSRDIAG tool / DFSR PS cmdlets are not available on Server Core! Skipping..."
                                 $outputObjectParams.Add('BacklogFileCount',-1)
                             }
-                            $outputObject = [PSCustomObject]$outputObjectParams
+                            $outputObject = New-Object -TypeName PSObject -Property $outputObjectParams
                             $outputObject
                         } # Closing iterate through all folders
                     } # Closing  If Connection enabled
@@ -249,7 +249,7 @@ function Get-RecentUpdateInfo {
             $LastSearch = $UpdateObj.Results.LastSearchSuccessDate
             $LastInstall = $UpdateObj.Results.LastInstallationSuccessDate
             $UpToDate = if ($LastInstall -lt (Get-Date).AddDays(-$UpToDateTime)) { $false } else { $true }
-            $windowsUpdateObject = [PSCustomObject]@{
+            $windowsUpdateObject = New-Object -TypeName PSObject -Property @{
                 ComputerName    = $env:COMPUTERNAME
                 LastSearch	    = $LastSearch
                 LastInstall	    = $LastInstall
@@ -263,7 +263,7 @@ function Get-RecentUpdateInfo {
                 $LastSearch = $UpdateObj.Results.LastSearchSuccessDate
                 $LastInstall = Get-HotFix -ComputerName $env:COMPUTERNAME | Sort-Object InstalledOn -Descending | Select-Object -First 1 -ExpandProperty InstalledOn
                 $UpToDate = if ($LastInstall -lt (Get-Date).AddDays(-$UpToDateTime)) { $false } else { $true }
-                $windowsUpdateObject = [PSCustomObject]@{
+                $windowsUpdateObject = New-Object -TypeName PSObject -Property @{
                     ComputerName    = $env:COMPUTERNAME
                     LastSearch	    = $LastSearch
                     LastInstall	    = $LastInstall
@@ -526,7 +526,7 @@ function Get-GPOChanges {
 #>
     
     [CmdletBinding(PositionalBinding = $true)]
-    [OutputType([PSCustomObject])]
+    [OutputType([Object])]
     param
     (
         [Parameter(Mandatory = $true,
@@ -579,7 +579,7 @@ function Get-GPOChanges {
                 If (($Differences.count) -gt 0) {
                     # GPO Changed
                     Write-Verbose "GPO CHANGED: $($GPO.DisplayName)"
-                    $GPOObj = [PSCustomObject]@{
+                    $GPOObj = New-Object -TypeName PSObject -Property @{
                         GPOName	    = ($GPo.DisplayName)
                         ChangeType  = "Modified"
                     }
@@ -609,7 +609,7 @@ function Get-GPOChanges {
             $_.sideIndicator -eq "<="
         } | Select-Object InputObject -ExpandProperty InputObject
         foreach ($NewGPO in $NewGPOList) {
-            $GPOObj = [PSCustomObject]@{
+            $GPOObj = New-Object -TypeName PSObject -Property @{
                 GPOName	    = $NewGPO
                 ChangeType  = "New"
             }
@@ -620,7 +620,7 @@ function Get-GPOChanges {
             $_.sideIndicator -eq "=>"
         } | Select-Object InputObject -ExpandProperty InputObject
         foreach ($DeletedGPO in $DeletedGposList) {
-            $GPOObj = [PSCustomObject]@{
+            $GPOObj = New-Object -TypeName PSObject -Property @{
                 GPOName	    = $DeletedGPO
                 ChangeType  = "Deleted"
             }
@@ -1267,7 +1267,7 @@ foreach ($Domain in $ThisForest.Domains) {
         Write-Verbose "Domain controllers: $($AllDomainControllersPS -join ', ')"
         Write-Log -Log $LogFilePath -Type INFO -Text "Domain controllers: $($AllDomainControllersPS -join ', ')"
     }
-    $ADInfo = [PSCustomObject]$ADInfoParams
+    $ADInfo = New-Object -TypeName PSObject -Property $ADInfoParams
     $AllDomainInfo = $AllDomainInfo + $ADInfo
 
     foreach ($Property in $ADInfo.psobject.properties.Name) {
@@ -1302,7 +1302,7 @@ foreach ($Domain in $ThisForest.Domains) {
         UsersWithReversiblePWEncryption = if ($AllUsersReversiblePW.count -gt 0) { ($AllUsersReversiblePW -join ', ') } else { 'None - ALL OK' }
         GPOChanges = if ($null -eq $GPOChanges) { "None" } else { $GPOChanges }
     }
-    $DomainObjectInfo = [PSCustomObject]$DomainObjectInfoParams
+    $DomainObjectInfo = New-Object -TypeName PSObject -Property $DomainObjectInfoParams
     $AllDomainObjectInfo = $AllDomainObjectInfo + $DomainObjectInfo
 
     foreach ($Property in $DomainObjectInfo.psobject.properties.Name) {
@@ -1429,7 +1429,7 @@ foreach ($DC in $AllDomainControllersPS) {
             $DCDiagResults = $DCDiagResults + $DCDiag
             
 
-            $DCResponse = [PSCustomObject]$OutputObjectParams
+            $DCResponse = New-Object -TypeName PSObject -Property $OutputObjectParams
             # Reorder in selected order
             $DCResponse = $DCResponse | Select-Object -Property ComputerName,NTDSService,NETLOGONService,DNSService,NetlogonAccessible,SYSVOLAccessible,"ADDS volume % free","ADDS log volume % free","SYSVOL volume % free",IsVirtual,IsGC,IsServerCore,OS,LastBoot
             $AllDCInfo = $AllDCInfo + $DCResponse
@@ -1446,7 +1446,7 @@ foreach ($DC in $AllDomainControllersPS) {
         catch {
             Write-Warning "$($DC.Name) failed"
             Write-Log -Log $LogFilePath -Type WARNING -Text "$($DC.Name) failed"
-            $FailObject = [PSCustomObject]@{
+            $FailObject = New-Object -TypeName PSObject -Property @{
                 ComputerName = $DC.HostName
                 DC = $DC
                 ServerResponding = $ServerResponding
@@ -1457,7 +1457,7 @@ foreach ($DC in $AllDomainControllersPS) {
     } else {
         Write-Warning "$($DC.Name) failed"
         Write-Log -Log $LogFilePath -Type WARNING -Text "$($DC.Name) failed"
-        $FailObject = [PSCustomObject]@{
+        $FailObject = New-Object -TypeName PSObject -Property @{
             ComputerName = $DC.HostName
             DC = $DC
             ServerResponding = $ServerResponding
@@ -1577,7 +1577,7 @@ foreach ($Server in $ServerList) {
                     # General info
                     $OutputObjectParams = @{}
 
-                    $InfoObject = [PSCustomObject]@{
+                    $InfoObject = New-Object -TypeName PSObject -Property @{
                         GUID = ([GUID]::NewGuid().Guid)
                         ComputerName = $env:COMPUTERNAME
                         OperatingSystem = $OSInfo.Caption
@@ -1597,7 +1597,7 @@ foreach ($Server in $ServerList) {
                         $Freespace = $Disk.FreeSpace / 1GB
                         $TotalSize = $Disk.Size / 1GB
                         $PercentFree = (($Freespace / $TotalSize) * 100)
-                        $DiskObj = [PSCustomObject]@{
+                        $DiskObj = New-Object -TypeName PSObject -Property @{
                             GUID = ([GUID]::NewGuid().Guid)
                             ComputerName = $env:COMPUTERNAME
                             Volume = $Disk.DeviceId
@@ -1612,7 +1612,7 @@ foreach ($Server in $ServerList) {
                     # local admins
                     # TODO: Filter domain admins / Administrator account
                     $LocalAdmins = net localgroup "Administrators" | Where-Object -FilterScript {$_ -AND $_ -notmatch "command completed successfully"} | Select-Object -Skip 4
-                    $AdminObj = [PSCustomObject]@{
+                    $AdminObj = New-Object -TypeName PSObject -Property @{
                         GUID = ([GUID]::NewGuid().Guid)
                         ComputerName = $env:COMPUTERNAME
                         Group = 'Administrators'
@@ -1643,7 +1643,7 @@ foreach ($Server in $ServerList) {
                                     $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
                                     $PrinterObjectParams.Add('IsPingable',$IsPingable)
         
-                                    $PrinterObject = [PSCustomObject]$PrinterObjectParams
+                                    $PrinterObject = New-Object -TypeName PSObject -Property $PrinterObjectParams
                                     [array]$PrinterList = $PrinterList + $PrinterObject
                                 }
                                 $OutputObjectParams.Add('SharedPrinters',$PrinterList)
@@ -1727,7 +1727,7 @@ foreach ($Server in $ServerList) {
                 }
 
                 # create object from params
-                $ServerObject = [PSCustomObject]$OutputObjectParams
+                $ServerObject = New-Object -TypeName PSObject -Property $OutputObjectParams
                 $AllServerInfo = $AllServerInfo + $ServerObject
 
                 
@@ -1743,7 +1743,7 @@ foreach ($Server in $ServerList) {
             catch {
                 Write-Warning "Failed to gather information from server: $($server.Name)"
                 Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to gather information from server: $($server.Name)"
-                $FailObject = [PSCustomObject]@{
+                $FailObject = New-Object -TypeName PSObject -Property @{
                     ComputerName = $Server.Name
                     Server = $Server
                     Error = $_
@@ -1756,7 +1756,7 @@ foreach ($Server in $ServerList) {
         } else {
             Write-Warning "Failed to gather information from server: $($server.Name)"
             Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to gather information from server: $($server.Name)"
-            $FailObject = [PSCustomObject]@{
+            $FailObject = New-Object -TypeName PSObject -Property @{
                 ComputerName = $Server.Name
                 Server = $Server
                 Error = $null
@@ -1769,7 +1769,7 @@ foreach ($Server in $ServerList) {
     } else {
         Write-Verbose "Ignored server: $($Server.Name)"
         Write-Log -Log $LogFilePath -Type INFO -Text "Ignored server: $($Server.Name)"
-        $FailObject = [PSCustomObject]@{
+        $FailObject = New-Object -TypeName PSObject -Property @{
             ComputerName = $Server.Name
             Server = $Server
             Error = $null
@@ -1813,7 +1813,7 @@ if ($VCentersAndESXIHosts.count -gt 0) {
                 $SnapshotList = $VMList | Get-Snapshot -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
                 $Datastores = Get-Datastore -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
                 $ESXEvents = Get-VIEvent -Server $VIServer | Sort-Object -Property CreatedTime -Descending | Select-Object -First 20 | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
-                $VMWareServer = [PSCustomObject]@{
+                $VMWareServer = New-Object -TypeName PSObject -Property @{
                     VMs = $VMList
                     VMSnapshots = $SnapshotList
                     Datastores = $Datastores
@@ -1824,7 +1824,7 @@ if ($VCentersAndESXIHosts.count -gt 0) {
             catch {
                 Write-Error "Error with server: $server"
                 Write-Log -Log $LogFilePath -Type ERROR -Text "Error with server: $server"
-                $FailedVMwareList += [PSCustomObject]@{
+                $FailedVMwareList += New-Object -TypeName PSObject -Property @{
                     Server = $Server
                     Error = $_
                     CanPing = $true
@@ -1833,7 +1833,7 @@ if ($VCentersAndESXIHosts.count -gt 0) {
         } else {
             Write-Error "Ping unsuccessful to: $server"
             Write-Log -Log $LogFilePath -Type ERROR -Text "Ping unsuccessful to: $server"
-            $FailedVMwareList += [PSCustomObject]@{
+            $FailedVMwareList += New-Object -TypeName PSObject -Property @{
                 Server = $Server
                 Error = $null
                 CanPing = $false
