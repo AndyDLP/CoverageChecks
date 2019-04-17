@@ -1623,36 +1623,39 @@ foreach ($Server in $ServerList) {
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
                     if ($InstalledRoles -contains 'Print-Server') {
-                        $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
-                        if ($null -ne $SharedPrinters) {
-                            $PrinterList = @()
-                            foreach ($Printer in $SharedPrinters) {
-                                $PrinterObjectParams = @{
-                                    GUID = ([GUID]::NewGuid().Guid)
-                                    ComputerName = $env:COMPUTERNAME
-                                    PrinterName = $Printer.Name
-                                    PrinterDriver = $Printer.DriverName
-                                    PublishedToAD = $Printer.Published
+                        Import-Module PrintManagement -Force -ErrorAction SilentlyContinue
+                        if ($null -ne (Get-Command -Name Get-Printer)) {
+                            $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
+                            if ($null -ne $SharedPrinters) {
+                                $PrinterList = @()
+                                foreach ($Printer in $SharedPrinters) {
+                                    $PrinterObjectParams = @{
+                                        GUID = ([GUID]::NewGuid().Guid)
+                                        ComputerName = $env:COMPUTERNAME
+                                        PrinterName = $Printer.Name
+                                        PrinterDriver = $Printer.DriverName
+                                        PublishedToAD = $Printer.Published
+                                    }
+                                    try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
+                                    catch { $PrinterAddress = $Printer.PortName }
+        
+                                    $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                                    $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
+                                    $PrinterObjectParams.Add('IsPingable',$IsPingable)
+        
+                                    $PrinterObject = [PSCustomObject]$PrinterObjectParams
+                                    [array]$PrinterList = $PrinterList + $PrinterObject
                                 }
-                                try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
-                                catch { $PrinterAddress = $Printer.PortName }
-    
-                                $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
-                                $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
-                                $PrinterObjectParams.Add('IsPingable',$IsPingable)
-    
-                                $PrinterObject = [PSCustomObject]$PrinterObjectParams
-                                [array]$PrinterList = $PrinterList + $PrinterObject
+                                $OutputObjectParams.Add('SharedPrinters',$PrinterList)
                             }
-                            $OutputObjectParams.Add('SharedPrinters',$PrinterList)
-                        }
-                    }
+                        } # if printer PS module installed
+                    } # if print management installed
 
                     # scheduled task with domain / local credentials (non-system)
                     # or system account task created by domain user
                     $IgnoredTaskRunAsUsers = @('INTERACTIVE','SYSTEM','NT AUTHORITY\SYSTEM','LOCAL SERVICE','NETWORK SERVICE','Users','Administrators','Everyone','Authenticated Users')
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
-                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
+                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($IgnoredTaskRunAsUsers -notcontains $_.'Run As User') -or ($DomainNames -contains ($_.Author -split '\\')[0])  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
                         $NonStandardScheduledTasks | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
@@ -1661,7 +1664,7 @@ foreach ($Server in $ServerList) {
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService','NT AUTHORITY\NETWORK SERVICE','NT AUTHORITY\SYSTEM')
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
-                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.Name -notin $IgnoredServiceNames) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($IgnoredServiceRunAsUsers -notcontains $_.StartName) -or ( ($IgnoredServiceNames -notcontains $_.Name) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
                         $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
