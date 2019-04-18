@@ -1653,7 +1653,7 @@ foreach ($Server in $ServerList) {
                     # or system account task created by domain user
                     $IgnoredTaskRunAsUsers = @('INTERACTIVE','SYSTEM','NT AUTHORITY\SYSTEM','LOCAL SERVICE','NETWORK SERVICE','Users','Administrators','Everyone','Authenticated Users')
                     $DomainNames = $args[1] | Select-Object -ExpandProperty DomainName
-                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($_.'Run As User' -notin $IgnoredTaskRunAsUsers) -or (($_.Author -split '\\')[0] -in $DomainNames)  ) }
+                    $NonStandardScheduledTasks = schtasks.exe /query /s $env:COMPUTERNAME /V /FO CSV | ConvertFrom-Csv | Where-Object -FilterScript { ($_.TaskName -notmatch 'ShadowCopyVolume') -and ($_.TaskName -notmatch 'G2MUploadTask') -and ($_.TaskName -notmatch 'Optimize Start Menu Cache Files') -and ($_.TaskName -ne "TaskName") -and ( ($IgnoredTaskRunAsUsers -notcontains $_.'Run As User') -or ($DomainNames -contains ($_.Author -split '\\')[0])  ) }
                     if ($null -ne $NonStandardScheduledTasks) {
                         $NonStandardScheduledTasks | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardScheduledTasks',$NonStandardScheduledTasks)
@@ -1662,7 +1662,7 @@ foreach ($Server in $ServerList) {
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService','NT AUTHORITY\NETWORK SERVICE','NT AUTHORITY\SYSTEM')
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
-                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($_.StartName -notin $IgnoredServiceRunAsUsers) -or ( ($_.Name -notin $IgnoredServiceNames) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($IgnoredServiceRunAsUsers -notcontains $_.StartName) -or ( ($IgnoredServiceNames -notcontains $_.Name ) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
                     if ($null -ne $NonStandardServices) {
                         $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
