@@ -1631,10 +1631,14 @@ foreach ($Server in $ServerList) {
                                     PrinterDriver = $Printer.DriverName
                                     PublishedToAD = $Printer.Published
                                 }
-                                try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
+                                try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop).PrinterHostAddress }
                                 catch { $PrinterAddress = $Printer.PortName }
     
-                                $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                                if ($null -ne $PrinterAddress) {
+                                    $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                                } else {
+                                    $IsPingable = $false
+                                }
                                 $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
                                 $PrinterObjectParams.Add('IsPingable',$IsPingable)
     
