@@ -1563,6 +1563,7 @@ foreach ($Server in $ServerList) {
                 Write-Log -Log $LogFilePath -Type INFO -Text "$($Server.Name) installed roles: $($InstalledRoles -join ', ')"
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
 
+                    $AvailableModules = Get-Module -ListAvailable | Select-Object -ExpandProperty Name
                     $InstalledRoles = Get-WindowsFeature | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
 
                     # Get some WMI info about the machine
@@ -1572,7 +1573,7 @@ foreach ($Server in $ServerList) {
                     $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
 
                     # General info
-                    $OutputObjectParams = @{}
+                    [hashtable]$OutputObjectParams = @{}
 
                     $InfoObject = New-Object -TypeName PSObject -Property @{
                         GUID = ([GUID]::NewGuid().Guid)
@@ -1619,7 +1620,7 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
-                    if ($InstalledRoles -contains 'Print-Server') {
+                    if (($InstalledRoles -contains 'Print-Server') -and ($AvailableModules -contains 'PrintManagement')) {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
                         if ($null -ne $SharedPrinters) {
                             $PrinterList = @()
@@ -1676,24 +1677,24 @@ foreach ($Server in $ServerList) {
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
                     }
 
-                    # DHCP information
-                    if ($InstalledRoles -contains 'DHCP') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # DHCP information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'DHCP') -and ($AvailableModules -contains 'DhcpServer')) {
+                        
                     }
 
-                    # WSUS information
-                    if ($InstalledRoles -contains 'UpdateServices') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # WSUS information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'UpdateServices') -and (($AvailableModules -contains 'UpdateServices'))) {
+
                     }
 
-                    # WDS information
-                    if ($InstalledRoles -contains 'WDS') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # WDS information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'WDS') -and ($AvailableModules -contains 'WDS')) {
+
                     }
 
-                    # Hyper-V information
-                    if ($InstalledRoles -contains 'Hyper-V') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # Hyper-V information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'Hyper-V') -and ($AvailableModules -contains 'Hyper-V')) {
+
                     }
                     
                     # Send the resulting hashtable out
