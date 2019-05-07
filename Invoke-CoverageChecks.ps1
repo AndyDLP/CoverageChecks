@@ -2062,8 +2062,13 @@ $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" 
 Write-Verbose "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 Write-Log -Log $LogFilePath -Type INFO -Text "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 
+if ($ConvertToPDF) {
+    Start-Process -FilePath "$PSScriptRoot\wkhtmltox\bin\wkhtmltopdf.exe" -ArgumentList "--orientation Landscape $PSScriptRoot\Reports\Report-$Today.html $PSScriptRoot\Reports\Report-$Today.pdf" -Wait
+}
+
 if ($IsVerbose) {
     Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
+    Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.pdf"
 }
 
 # Output to PDF?
