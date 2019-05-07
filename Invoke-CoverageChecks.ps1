@@ -552,6 +552,7 @@ function Get-GPOChanges {
             $DisplayNameNoDots = $DisplayNameNoDots.Replace("?", "")
             $DisplayNameNoDots = $DisplayNameNoDots.Replace("<", "")
             $DisplayNameNoDots = $DisplayNameNoDots.Replace(">", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("*", "")
             $FileWithPath = Join-Path -Path $ThisRunFolder -ChildPath "$DisplayNameNoDots.xml"
             
             Write-Verbose "Original name: $($GPO.DisplayName)"
