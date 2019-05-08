@@ -1207,7 +1207,7 @@ Import-Module -Name $RequiredModules -ErrorAction Stop -Verbose:$false
 
 # Optional modules
 
-#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue -Verbose:$false
+#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 # END SETUP VARIABLES
 ########################################################

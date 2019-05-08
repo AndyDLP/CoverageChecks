@@ -283,6 +283,9 @@ $VCentersAndESXIHosts = @(
 $IgnoredServers = @(
 )
 
+# Create and convert to PDF instead of HTML
+$ConvertToPDF = $true
+
 # Change to $true to enable reporting sending via email
 $SendEmail = $false
 
