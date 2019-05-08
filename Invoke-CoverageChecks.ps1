@@ -2062,22 +2062,24 @@ $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" 
 Write-Verbose "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 Write-Log -Log $LogFilePath -Type INFO -Text "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 
+# Output to PDF?
+# https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 if ($ConvertToPDF) {
     Start-Process -FilePath "$PSScriptRoot\wkhtmltox\bin\wkhtmltopdf.exe" -ArgumentList "--orientation Landscape $PSScriptRoot\Reports\Report-$Today.html $PSScriptRoot\Reports\Report-$Today.pdf" -Wait
+    $OutputFilepath = "$PSScriptRoot\Reports\Report-$Today.pdf"
+} else {
+    $OutputFilepath = "$PSScriptRoot\Reports\Report-$Today.html"
 }
 
 if ($IsVerbose) {
-    Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
-    Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.pdf"
+    Invoke-Item -Path $OutputFilepath
 }
 
-# Output to PDF?
-# https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
 
 if ($SendEmail) {
     Write-Verbose "Sending email to: $($TargetEmail -join ', ')"
     Write-Log -Log $LogFilePath -Type INFO -Text "Sending email to: $($TargetEmail -join ', ')"
-    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
+    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments $OutputFilepath -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
 }
 
 # END OUTPUT
