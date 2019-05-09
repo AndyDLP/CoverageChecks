@@ -1288,10 +1288,10 @@ foreach ($Domain in $ThisForest.Domains) {
     [array]$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false} | Select-Object -ExpandProperty DistinguishedName
     
     # user no expire
-    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName | Where-Object -FilterScript { ($_ -notmatch 'SM_[0-9a-f]') -and ($_ -notmatch 'HealthMailbox[0-9a-f]') }
 
     # reversible encryption
-    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName | Where-Object -FilterScript { ($_ -notmatch 'SM_[0-9a-f]') -and ($_ -notmatch 'HealthMailbox[0-9a-f]') }
 
     $DomainObjectInfoParams = @{
         DomainName = $ThisDomain.NetBIOSName
