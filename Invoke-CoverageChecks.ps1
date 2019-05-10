@@ -523,6 +523,7 @@ function Get-GPOChanges {
 #>
     
     [CmdletBinding(PositionalBinding = $true)]
+
     param
     (
         [Parameter(Mandatory = $true,
@@ -1621,6 +1622,7 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
+
                     if (($InstalledRoles -contains 'Print-Server') -and ($AvailableModules -contains 'PrintManagement')) {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
                         if ($null -ne $SharedPrinters) {
@@ -1647,9 +1649,8 @@ foreach ($Server in $ServerList) {
                                 $PrinterObject = New-Object -TypeName PSObject -Property $PrinterObjectParams
                                 [array]$PrinterList = $PrinterList + $PrinterObject
                             }
-                            $OutputObjectParams.Add('SharedPrinters',$PrinterList)
-                        }
-                    }
+                        } # if printer PS module installed
+                    } # if print management installed
 
                     # scheduled task with domain / local credentials (non-system)
                     # or system account task created by domain user
@@ -1664,7 +1665,9 @@ foreach ($Server in $ServerList) {
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService','NT AUTHORITY\NETWORK SERVICE','NT AUTHORITY\SYSTEM')
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
+                    
                     $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($IgnoredServiceRunAsUsers -notcontains $_.StartName) -or ( ($IgnoredServiceNames -notcontains $_.Name ) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+
                     if ($null -ne $NonStandardServices) {
                         $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
