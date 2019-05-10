@@ -28,7 +28,7 @@
 	
     .NOTES
         Andrew de la Pole - 2019
-        Version 0.8.5
+        Version 0.9.0
 #>
 [CmdletBinding()]
 Param (
@@ -518,15 +518,12 @@ function Get-GPOChanges {
     .EXAMPLE
         PS C:\> Get-GPOChanges -LastRunFolder $PSScriptRoot -ThisRunFolder $PSScriptRoot
     
-    .OUTPUTS
-        System.Management.Automation.PSCustomObject
-    
     .NOTES
         Updated 2017-11-24
 #>
     
     [CmdletBinding(PositionalBinding = $true)]
-    [OutputType([Object])]
+
     param
     (
         [Parameter(Mandatory = $true,
@@ -556,6 +553,7 @@ function Get-GPOChanges {
             $DisplayNameNoDots = $DisplayNameNoDots.Replace("?", "")
             $DisplayNameNoDots = $DisplayNameNoDots.Replace("<", "")
             $DisplayNameNoDots = $DisplayNameNoDots.Replace(">", "")
+            $DisplayNameNoDots = $DisplayNameNoDots.Replace("*", "")
             $FileWithPath = Join-Path -Path $ThisRunFolder -ChildPath "$DisplayNameNoDots.xml"
             
             Write-Verbose "Original name: $($GPO.DisplayName)"
@@ -856,7 +854,8 @@ $RunningUser = Get-ADUser ($env:USERNAME) -ErrorAction Stop
 Write-Verbose "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Script running as: $($env:USERNAME)@$($env:USERDNSDOMAIN)"
 $RunningUserGroups = Get-ADGroup -LDAPFilter ("(member:1.2.840.113556.1.4.1941:={0})" -f ($RunningUser.DistinguishedName)) | Select-Object -ExpandProperty Name
-If ($RunningUserGroups -Contains "Domain Admins") {
+Write-Verbose "Group membership for $env:Username`: $($RunningUserGroups -join ', ')"
+If (($RunningUserGroups -Contains "Domain Admins") -or ($RunningUserGroups -Contains "Administrators")) {
     Write-Verbose "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
     Write-Log -Log $LogFilePath -Type INFO -Text "$($env:USERNAME)@$($env:USERDNSDOMAIN) is a domain admin"
 } else {
@@ -1209,7 +1208,7 @@ Import-Module -Name $RequiredModules -ErrorAction Stop -Verbose:$false
 
 # Optional modules
 
-#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue -Verbose:$false
+#Import-Module FailoverClusters,VMWare.PowerCLI -ErrorAction SilentlyContinue
 
 # END SETUP VARIABLES
 ########################################################
@@ -1290,10 +1289,10 @@ foreach ($Domain in $ThisForest.Domains) {
     [array]$AllVulnerableOUs = Get-ADObject -Properties ProtectedFromAccidentalDeletion -Filter {(ObjectClass -eq 'organizationalUnit')} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript {$_.ProtectedFromAccidentalDeletion -eq $false} | Select-Object -ExpandProperty DistinguishedName
     
     # user no expire
-    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+    [array]$AllUsersNoExpiryPW = Get-ADUser -Filter {PasswordNeverExpires -eq $true} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript { ($_ -notmatch 'SM_[0-9a-f]') -and ($_ -notmatch 'HealthMailbox[0-9a-f]') } | Select-Object -ExpandProperty SamAccountName
 
     # reversible encryption
-    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Select-Object -ExpandProperty SamAccountName
+    [array]$AllUsersReversiblePW = Get-ADUser -Filter {AllowReversiblePasswordEncryption -eq $true} -Server $ThisDomain.PDCEmulator | Where-Object -FilterScript { ($_ -notmatch 'SM_[0-9a-f]') -and ($_ -notmatch 'HealthMailbox[0-9a-f]') } | Select-Object -ExpandProperty SamAccountName
 
     $DomainObjectInfoParams = @{
         DomainName = $ThisDomain.NetBIOSName
@@ -1566,6 +1565,7 @@ foreach ($Server in $ServerList) {
                 Write-Log -Log $LogFilePath -Type INFO -Text "$($Server.Name) installed roles: $($InstalledRoles -join ', ')"
                 $OutputObjectParams = Invoke-Command -Session $ServerSSession -HideComputerName -ScriptBlock {
 
+                    $AvailableModules = Get-Module -ListAvailable | Select-Object -ExpandProperty Name
                     $InstalledRoles = Get-WindowsFeature | Where-Object -FilterScript {$_.installed -eq $true} | Select-Object -ExpandProperty Name
 
                     # Get some WMI info about the machine
@@ -1575,7 +1575,7 @@ foreach ($Server in $ServerList) {
                     $DiskInfo = Get-WmiObject -Class 'win32_logicaldisk' -Filter {DriveType=3}
 
                     # General info
-                    $OutputObjectParams = @{}
+                    [hashtable]$OutputObjectParams = @{}
 
                     $InfoObject = New-Object -TypeName PSObject -Property @{
                         GUID = ([GUID]::NewGuid().Guid)
@@ -1622,31 +1622,32 @@ foreach ($Server in $ServerList) {
 
                     # Printers shared from this machine
                     #  TODO: Add port checks + management page check?
-                    if ($InstalledRoles -contains 'Print-Server') {
-                        Import-Module PrintManagement -Force -ErrorAction SilentlyContinue
-                        if ($null -ne (Get-Command -Name Get-Printer)) {
-                            $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
-                            if ($null -ne $SharedPrinters) {
-                                $PrinterList = @()
-                                foreach ($Printer in $SharedPrinters) {
-                                    $PrinterObjectParams = @{
-                                        GUID = ([GUID]::NewGuid().Guid)
-                                        ComputerName = $env:COMPUTERNAME
-                                        PrinterName = $Printer.Name
-                                        PrinterDriver = $Printer.DriverName
-                                        PublishedToAD = $Printer.Published
-                                    }
-                                    try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop | Select-Object -ExpandProperty 'PrinterHostAddress') }
-                                    catch { $PrinterAddress = $Printer.PortName }
-        
-                                    $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
-                                    $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
-                                    $PrinterObjectParams.Add('IsPingable',$IsPingable)
-        
-                                    $PrinterObject = New-Object -TypeName PSObject -Property $PrinterObjectParams
-                                    [array]$PrinterList = $PrinterList + $PrinterObject
+
+                    if (($InstalledRoles -contains 'Print-Server') -and ($AvailableModules -contains 'PrintManagement')) {
+                        $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
+                        if ($null -ne $SharedPrinters) {
+                            $PrinterList = @()
+                            foreach ($Printer in $SharedPrinters) {
+                                $PrinterObjectParams = @{
+                                    GUID = ([GUID]::NewGuid().Guid)
+                                    ComputerName = $env:COMPUTERNAME
+                                    PrinterName = $Printer.Name
+                                    PrinterDriver = $Printer.DriverName
+                                    PublishedToAD = $Printer.Published
                                 }
-                                $OutputObjectParams.Add('SharedPrinters',$PrinterList)
+                                try { $PrinterAddress = (Get-PrinterPort -Name $Printer.PortName -ErrorAction Stop).PrinterHostAddress }
+                                catch { $PrinterAddress = $Printer.PortName }
+    
+                                if ($null -ne $PrinterAddress) {
+                                    $IsPingable = Test-Connection $PrinterAddress -Count 1 -Quiet
+                                } else {
+                                    $IsPingable = $false
+                                }
+                                $PrinterObjectParams.Add('PrinterAddress',$PrinterAddress)
+                                $PrinterObjectParams.Add('IsPingable',$IsPingable)
+    
+                                $PrinterObject = New-Object -TypeName PSObject -Property $PrinterObjectParams
+                                [array]$PrinterList = $PrinterList + $PrinterObject
                             }
                         } # if printer PS module installed
                     } # if print management installed
@@ -1664,7 +1665,9 @@ foreach ($Server in $ServerList) {
                     # services with domain / local credentials (non-system)
                     $IgnoredServiceRunAsUsers = @('LocalSystem', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService','NT AUTHORITY\NETWORK SERVICE','NT AUTHORITY\SYSTEM')
                     $IgnoredServiceNames = @('gupdate','sppsvc','RemoteRegistry','ShellHWDetection','WbioSrvc')
-                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($IgnoredServiceRunAsUsers -notcontains $_.StartName) -or ( ($IgnoredServiceNames -notcontains $_.Name) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+                    
+                    $NonStandardServices = Get-WmiObject -Class 'win32_service' | Where-Object -FilterScript { ($IgnoredServiceRunAsUsers -notcontains $_.StartName) -or ( ($IgnoredServiceNames -notcontains $_.Name ) -and ($_.StartMode -eq 'Auto') -and ($_.State -ne 'Running') ) }
+
                     if ($null -ne $NonStandardServices) {
                         $NonStandardServices | Add-Member -MemberType 'NoteProperty' -Name 'GUID' -Value ([GUID]::NewGuid().Guid)
                         $OutputObjectParams.Add('NonStandardServices',$NonStandardServices)
@@ -1678,24 +1681,24 @@ foreach ($Server in $ServerList) {
                         $OutputObjectParams.Add('ExpiredSoonCertificates',$ExpiredSoonCertificates)
                     }
 
-                    # DHCP information
-                    if ($InstalledRoles -contains 'DHCP') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # DHCP information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'DHCP') -and ($AvailableModules -contains 'DhcpServer')) {
+                        
                     }
 
-                    # WSUS information
-                    if ($InstalledRoles -contains 'UpdateServices') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # WSUS information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'UpdateServices') -and (($AvailableModules -contains 'UpdateServices'))) {
+
                     }
 
-                    # WDS information
-                    if ($InstalledRoles -contains 'WDS') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # WDS information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'WDS') -and ($AvailableModules -contains 'WDS')) {
+
                     }
 
-                    # Hyper-V information
-                    if ($InstalledRoles -contains 'Hyper-V') {
-                        # Check installed sub features (PS cmdlets / RSAT tools etc)
+                    # Hyper-V information - Obviously assusmes both role and management tools (PS Modules) are installed on the same machine
+                    if (($InstalledRoles -contains 'Hyper-V') -and ($AvailableModules -contains 'Hyper-V')) {
+
                     }
                     
                     # Send the resulting hashtable out
@@ -2062,17 +2065,24 @@ $OutputHTMLFile | Out-File -FilePath "$PSScriptRoot\Reports\Report-$Today.html" 
 Write-Verbose "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 Write-Log -Log $LogFilePath -Type INFO -Text "HTML File output path: $PSScriptRoot\Reports\Report-$Today.html"
 
-if ($IsVerbose) {
-    Invoke-Item -Path "$PSScriptRoot\Reports\Report-$Today.html"
-}
-
 # Output to PDF?
 # https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
+if ($ConvertToPDF) {
+    Start-Process -FilePath "$PSScriptRoot\wkhtmltox\bin\wkhtmltopdf.exe" -ArgumentList "--orientation Landscape $PSScriptRoot\Reports\Report-$Today.html $PSScriptRoot\Reports\Report-$Today.pdf" -Wait
+    $OutputFilepath = "$PSScriptRoot\Reports\Report-$Today.pdf"
+} else {
+    $OutputFilepath = "$PSScriptRoot\Reports\Report-$Today.html"
+}
+
+if ($IsVerbose) {
+    Invoke-Item -Path $OutputFilepath
+}
+
 
 if ($SendEmail) {
     Write-Verbose "Sending email to: $($TargetEmail -join ', ')"
     Write-Log -Log $LogFilePath -Type INFO -Text "Sending email to: $($TargetEmail -join ', ')"
-    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments ("$PSScriptRoot\Reports\Report-$Today.html") -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
+    Send-MailMessage -To $TargetEmail -From $FromEmail -Port $MailPort -SmtpServer $MailServer -Attachments $OutputFilepath -BodyAsHtml -Body (Get-Content -Path "$PSScriptRoot\Reports\Report-$Today.html" -Raw) -Subject $MailSubject -ErrorAction Continue
 }
 
 # END OUTPUT
