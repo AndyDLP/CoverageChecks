@@ -1143,9 +1143,10 @@ if ($SendEmail -eq $true) {
         Write-Warning "TargetEmail variable not found, using system defaults"
         Write-Log -Log $LogFilePath -Type WARNING -Text "TargetEmail variable not found, using system defaults"
         # A comma separated list of recipients for the email
+        # e.g.
+        # "recipient1@example.com",
+        # "recipient2@example.com"
         $TargetEmail = @(
-        "recipient1@example.com",
-        "recipient2@example.com"
         )
     }
     Write-Verbose ("Email recipients: " + $TargetEmail -join ', ')
