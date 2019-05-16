@@ -72,7 +72,7 @@ function Write-Log {
     [string]$Text,
     [parameter(Mandatory=$false,
                Position = 1)]
-    [ValidateSet('WARNING','ERROR','INFO')]
+    [ValidateSet('WARNING','ERROR','INFO','DEBUG')]
     [string]$Type = 'INFO',
     [parameter(Mandatory=$true,
                Position = 0)]
