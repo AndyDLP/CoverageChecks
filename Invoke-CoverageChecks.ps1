@@ -1,6 +1,6 @@
 <#
 	.SYNOPSIS
-		ECI Coverage check automation
+		Coverage check automation
 	
 	.DESCRIPTION
 		Automatically finds and checks for the most common problems in a variety of areas
