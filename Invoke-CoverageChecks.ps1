@@ -1183,7 +1183,7 @@ if ($SendEmail -eq $true) {
         Write-Warning "MailSubject variable not found, using system defaults"
         Write-Log -Log $LogFilePath -Type WARNING -Text "MailSubject variable not found, using system defaults"
         # The subject for the report email 
-        $MailSubject = "ECI Coverage Checks - $(Get-Date)"
+        $MailSubject = "Coverage Checks - $(Get-Date)"
     }
     Write-Verbose "Mail subject: $MailSubject"
     Write-Log -Log $LogFilePath -Type INFO -Text "Mail subject: $MailSubject"
