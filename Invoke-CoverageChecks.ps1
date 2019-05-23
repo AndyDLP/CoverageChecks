@@ -1419,13 +1419,12 @@ foreach ($DC in $AllDomainControllersPS) {
                     $DCDIAGResult | Add-Member -Type NoteProperty -Name 'PassedTests' -Value ($PassedStrings -join ', ') -Force
                 }
                 if ($FailedStrings.Count -gt 0) {
-                    $PassedStrings = $FailedStrings | Select-Object -Unique
+                    $FailedStrings = $FailedStrings | Select-Object -Unique
                     $DCDIAGResult | Add-Member -Type NoteProperty -Name 'FailedTests' -Value ($FailedStrings -join ', ') -Force
                 }
                 $DCDIAGResult
             } # scriptblock
             $DCdiag = $DCDiag | Select-Object -Property ComputerName,PassedTests,FailedTests
-            $DCDiagOutputObject
             $DCDiagResults = $DCDiagResults + $DCDiag
             
 
