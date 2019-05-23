@@ -1957,7 +1957,7 @@ table{ margin-left: 20px; }
 }
 
 $fragments = @()
-$fragments = $fragments + "<H1>ECI Coverage Report - $(Get-Date)</H1>"
+$fragments = $fragments + "<H1>Coverage Report - $(Get-Date)</H1>"
 
 # AD Fragements
 foreach ($domain in $AllDomainInfo) {
