@@ -1744,8 +1744,8 @@ foreach ($Server in $ServerList) {
                 Remove-PSSession -Session $ServerSSession
             }
             catch {
-                Write-Warning "Failed to gather information from server: $($server.Name)"
-                Write-Log -Log $LogFilePath -Type WARNING -Text "Failed to gather information from server: $($server.Name)"
+                Write-Error "Failed to gather information from server: $($server.Name)"
+                Write-Log -Log $LogFilePath -Type Error -Text "Failed to gather information from server: $($server.Name)"
                 $FailObject = New-Object -TypeName PSObject -Property @{
                     ComputerName = $Server.Name
                     Server = $Server
@@ -1972,6 +1972,7 @@ foreach ($domain in $AllDomainInfo) {
     }
     $DomainString = $DomainString + "</table>"
     $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Select-Object DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges)
+    $AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "$($_.DomainName)\DomainObjects-$Today.csv") -NoTypeInformation -Append
     $ObjectString = "<table>
     <colgroup><col/><col/></colgroup>
     <tr><th>Object</th><th>Value</th></tr>"
@@ -1983,20 +1984,24 @@ foreach ($domain in $AllDomainInfo) {
 }
 
 # DC Info fragments
+$AllDCInfo | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "AllDCInfo-$Today.csv") -NoTypeInformation -Append
 $AllDCInfo = Select-Data -Data $AllDCInfo -Category 'Domain Controllers' -DefaultFilters $DefaultFilters
 $fragments = $fragments + (Format-HTMLTable -Data $AllDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Domain Controllers')
 
 # DC diag fragments
+$DCDiagResults | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "DCDiagResults-$Today.csv") -NoTypeInformation -Append
 $DCDiagResults = Select-Data -Data $DCDiagResults -Category 'DCDiag Results' -DefaultFilters $DefaultFilters
 $fragments = $fragments + (Format-HTMLTable -Data $DCDiagResults -ConditionalFormatting $ConditionalFormatting -Category 'DCDiag Results')
 
 # DFSR fragments
+$AllDCBacklogs | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "AllDCBacklogs-$Today.csv") -NoTypeInformation -Append
 $AllDCBacklogs = Select-Data -Data $AllDCBacklogs -Category 'SYSVOL Backlog' -DefaultFilters $DefaultFilters
 $fragments = $fragments + ((Format-HTMLTable -Data $AllDCBacklogs -ConditionalFormatting $ConditionalFormatting -Category 'SYSVOL Backlog') + "<p>A file count of -1 means the DFSR management tools are not installed</p>")
 
 # Failed DCs
 if ($FailedDCInfo.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $FailedDCInfo | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "FailedDCInfo-$Today.csv") -NoTypeInformation -Append
     $FailedDCInfo = Select-Data -Data $FailedDCInfo -Category 'Unresponsive Domain Controllers' -DefaultFilters $DefaultFilters
     $fragments = $fragments + (Format-HTMLTable -Data $FailedDCInfo -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive Domain Controllers')
 }
@@ -2004,6 +2009,7 @@ if ($FailedDCInfo.Count -gt 0) {
 # Failed servers
 if ($FailedServers.Count -gt 0) {
     $fragments = $fragments + '<br>------------------------------------------------------------------------------------------------------------------------------------<br>'
+    $FailedServers | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "FailedServers-$Today.csv") -NoTypeInformation -Append
     $FailedServers = Select-Data -Data $FailedServers -Category 'Unresponsive servers' -DefaultFilters $DefaultFilters
     $fragments = $fragments + (Format-HTMLTable -Data $FailedServers -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive servers')
 }
@@ -2015,7 +2021,8 @@ if ($VCentersAndESXIHosts.count -gt 0) {
 
     # unresponsive servers
     if ($FailedVMwareList.count -gt 0) {
-        $FailedDCInfo = Select-Data -Data $FailedVMwareList -Category 'Unresponsive VMWare Servers' -DefaultFilters $DefaultFilters
+        $FailedVMwareList | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "FailedVMwareList-$Today.csv") -NoTypeInformation -Append
+        $FailedVMwareList = Select-Data -Data $FailedVMwareList -Category 'Unresponsive VMWare Servers' -DefaultFilters $DefaultFilters
         $fragments = $fragments + (Format-HTMLTable -Data $FailedVMwareList -ConditionalFormatting $ConditionalFormatting -Category 'Unresponsive VMWare Servers')
     }
     
@@ -2027,8 +2034,9 @@ if ($VCentersAndESXIHosts.count -gt 0) {
     Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
     Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
     foreach ($Property in $UniqueProperties) {
-        $info = $VMWareInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
-        $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
+        $VMWareInfo2 = $VMWareInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+        $VMWareInfo2 | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "VMWareInfo-$Today.csv") -NoTypeInformation -Append
+        $FilteredInfo = Select-Data -Data $VMWareInfo2 -Category $Property -DefaultFilters $DefaultFilters
         if ($null -ne $FilteredInfo) {
             $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
         } # not null info
@@ -2050,6 +2058,7 @@ Write-Verbose "Unique server properties: $($UniqueProperties | Out-String)"
 Write-Log -Log $LogFilePath -Type INFO -Text "Unique server properties: $($UniqueProperties | Out-String)"
 foreach ($Property in $UniqueProperties) {
     $info = $AllServerInfo | Select-Object -ExpandProperty $Property -ErrorAction SilentlyContinue
+    $FilteredInfo | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "ServerInfo-$Property-$Today.csv") -NoTypeInformation -Append
     $FilteredInfo = Select-Data -Data $info -Category $Property -DefaultFilters $DefaultFilters
     if ($null -ne $FilteredInfo) {
         $fragments = $fragments + (Format-HTMLTable -Data $FilteredInfo -ConditionalFormatting $ConditionalFormatting -Category $Property)
