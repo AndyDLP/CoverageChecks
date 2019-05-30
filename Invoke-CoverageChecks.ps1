@@ -820,6 +820,7 @@ $Today = (Get-Date -Format "yyyy-MM-dd-HH-mm-ss")
 
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Data" -ErrorAction SilentlyContinue) ) { mkdir "$PSScriptRoot\Data" | Out-Null }
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$Today" -ErrorAction SilentlyContinue) ) { mkdir "$PSScriptRoot\Data\$Today" | Out-Null }
+Start-Sleep -Seconds 2
 if ($null -eq (Get-Item -Path "$PSScriptRoot\Logs" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Logs" | Out-Null }
 $LogFilePath = (Join-Path -Path "$PSScriptRoot\Logs" -ChildPath "$Today.log")
 
