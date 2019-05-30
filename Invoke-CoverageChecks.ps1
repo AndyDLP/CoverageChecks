@@ -1810,11 +1810,21 @@ if ($VCentersAndESXIHosts.count -gt 0) {
                 # Below works for same user on same machine only (encrypts the password only) - Run as the user running the script not the principal
                 # $Cred = Get-Credential Domain\User | Export-CliXml .\Credential.xml
                 # $ImportedCred = Import-CliXml .\credential.xml
+                Write-Verbose "Connecting to: $($Server)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Connecting to: $($Server)"
                 $VIServer = Connect-VIServer -Server $Server -ErrorAction Stop # -Credential $ImportedCred
                 $ConnectedVMwareList += $VIServer
+                Write-Verbose "Getting VMs from: $($Server)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Getting VMs from: $($Server)"
                 $VMList = Get-VM -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                Write-Verbose "Getting snapshots from: $($Server)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Getting snapshots from: $($Server)"
                 $SnapshotList = $VMList | Get-Snapshot -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                Write-Verbose "Getting datastores from: $($Server)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Getting datastores from: $($Server)"
                 $Datastores = Get-Datastore -Server $VIServer | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
+                Write-Verbose "Getting events from: $($Server)"
+                Write-Log -Log $LogFilePath -Type INFO -Text "Getting events from: $($Server)"
                 $ESXEvents = Get-VIEvent -Server $VIServer | Sort-Object -Property CreatedTime -Descending | Select-Object -First 20 | ForEach-Object -Process { Add-Member -InputObject $_ -MemberType NoteProperty -Name VIServer -Value $server }
                 $VMWareServer = New-Object -TypeName PSObject -Property @{
                     VMs = $VMList
@@ -1971,8 +1981,8 @@ foreach ($domain in $AllDomainInfo) {
     
     }
     $DomainString = $DomainString + "</table>"
-    $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Select-Object DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges)
     $AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Export-Csv -Path (Join-Path -Path "$PSScriptRoot\Data" -ChildPath "$($_.DomainName)\DomainObjects-$Today.csv") -NoTypeInformation -Append
+    $ObjectInfo = ($AllDomainObjectInfo | Where-Object -FilterScript {$_.DomainName -eq $Domain.DomainName} | Select-Object DomainName,OUVulnerableToAccidentalDeletion,UsersWithNoPasswordExpiry,UsersWithReversiblePWEncryption,GPOChanges)
     $ObjectString = "<table>
     <colgroup><col/><col/></colgroup>
     <tr><th>Object</th><th>Value</th></tr>"
