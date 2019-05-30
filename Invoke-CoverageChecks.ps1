@@ -1277,8 +1277,8 @@ foreach ($Domain in $ThisForest.Domains) {
         Write-Log -Log $LogFilePath -Type INFO -Text "$($ThisDomain.NetBIOSName) $($Property): $($ADInfo.$Property)"
     }
 
-    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
-    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
+    if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
     $str = @()
     $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun"
     if ($null -ne $GPOChanges) { 
