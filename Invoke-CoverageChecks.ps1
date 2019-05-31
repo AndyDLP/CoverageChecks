@@ -1278,8 +1278,11 @@ foreach ($Domain in $ThisForest.Domains) {
     }
 
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" | Out-Null }
+
+
     if ($null -eq (Get-Item -Path "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun" -ErrorAction SilentlyContinue)) { mkdir "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun" | Out-Null }
     $str = @()
+
     $GPOChanges = Get-GPOChanges -LastRunFolder "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\LastRun" -ThisRunFolder "$PSScriptRoot\Data\$Today\$($ThisDomain.NetBIOSName)\ThisRun"
     if ($null -ne $GPOChanges) { 
         $GPOChanges | ForEach-Object -Process { $str = $str + ($_.GPOName + " (" + $_.ChangeType + ")") }
@@ -1389,7 +1392,6 @@ foreach ($DC in $AllDomainControllersPS) {
             $AllDCBacklogs = $AllDCBacklogs + $DCBacklog
 
             $OutputObjectParams.Add('NetlogonAccessible',(Test-Path -Path "\\$($DC.HostName)\NETLOGON\"))
-            # TODO: FIX BELOW  -  This wont work properly for a multi-domain environment...?
             $OutputObjectParams.Add('SYSVOLAccessible',(Test-Path -Path "\\$($DC.HostName)\SYSVOL\$((Get-ADDomain).DNSRoot)"))
 
             # dcdiag
@@ -1612,7 +1614,6 @@ foreach ($Server in $ServerList) {
                     $OutputObjectParams.Add('Disks',$Disks)
 
                     # local admins
-                    # TODO: Filter domain admins / Administrator account
                     $LocalAdmins = net localgroup "Administrators" | Where-Object -FilterScript {$_ -AND $_ -notmatch "command completed successfully"} | Select-Object -Skip 4
                     $AdminObj = New-Object -TypeName PSObject -Property @{
                         GUID = ([GUID]::NewGuid().Guid)
@@ -1623,7 +1624,6 @@ foreach ($Server in $ServerList) {
                     $OutputObjectParams.Add('LocalAdministrators',$AdminObj)
 
                     # Printers shared from this machine
-                    #  TODO: Add port checks + management page check?
 
                     if (($InstalledRoles -contains 'Print-Server') -and ($AvailableModules -contains 'PrintManagement')) {
                         $SharedPrinters = Get-Printer -ComputerName $env:COMPUTERNAME | Where-Object -FilterScript { ($_.Shared -eq $true) }
@@ -1808,7 +1808,6 @@ if ($VCentersAndESXIHosts.count -gt 0) {
             Write-Verbose "Ping successful to: $server"
             Write-Log -Log $LogFilePath -Type INFO -Text "Ping successful to: $server"
             try {
-                # TODO: Add export + import of credentials for easy re-use (run as service account)
                 # Below works for same user on same machine only (encrypts the password only) - Run as the user running the script not the principal
                 # $Cred = Get-Credential Domain\User | Export-CliXml .\Credential.xml
                 # $ImportedCred = Import-CliXml .\credential.xml
